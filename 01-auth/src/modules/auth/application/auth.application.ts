@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { err, ok } from 'neverthrow';
 
@@ -110,10 +111,16 @@ export class AuthApplication {
   };
 
   // Access token: use config of JwtModule (secret + expiresIn are there)
-  const accessToken = await this.jwtService.signAsync(payload);
+  const accessToken = await this.jwtService.signAsync({
+    ...payload,
+    jti: randomUUID(),
+  });
 
   // Refresh token: secret and ttl different
-  const refreshToken = await this.jwtService.signAsync(payload, {
+  const refreshToken = await this.jwtService.signAsync({
+    ...payload,
+    jti: randomUUID(),
+  }, {
     secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
     expiresIn: this.refreshTokenTtl as string,
     algorithm: 'HS256',

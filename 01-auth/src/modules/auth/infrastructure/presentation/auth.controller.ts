@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Inject,
+  HttpException,
   InternalServerErrorException,
   Post,
   Req,
@@ -69,7 +70,7 @@ export class AuthController {
       const error = result.error as BaseException;
       if (error instanceof InvalidCredentialsException) {
         // generic error, dont tell the specific error (OWASP)
-        throw new InvalidCredentialsException();
+        throw new HttpException('Invalid credentials', error.status);
       }
 
       throw new InternalServerErrorException(error.message, {
@@ -103,7 +104,7 @@ export class AuthController {
 
     if (result.isErr()) {
       const error = result.error;
-      throw new InvalidCredentialsException(error.message);
+      throw new HttpException(error.message, error.status);
     }
 
     const { user: u, tokens } = result.value;

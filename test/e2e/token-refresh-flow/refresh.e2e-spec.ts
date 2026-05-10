@@ -13,8 +13,6 @@ import {
 import { disconnectKafka } from '../../shared/kafka.helper';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
-import { AppModule } from '../../../01-auth/src/app.module';
-
 describe('Token Refresh Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
@@ -37,6 +35,7 @@ describe('Token Refresh Flow E2E', () => {
       JWT_REFRESH_EXPIRES_IN: '7d',
     });
 
+    const { AppModule } = await import('../../../01-auth/src/app.module');
     app = await createTestApp({ imports: [AppModule] });
     dataSource = app.get(DataSource);
   }, 120000);

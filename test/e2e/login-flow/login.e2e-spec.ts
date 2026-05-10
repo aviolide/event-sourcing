@@ -13,8 +13,6 @@ import {
 import { disconnectKafka } from '../../shared/kafka.helper';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
-import { AppModule } from '../../../01-auth/src/app.module';
-
 describe('Login Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
@@ -37,6 +35,7 @@ describe('Login Flow E2E', () => {
       JWT_REFRESH_EXPIRES_IN: '7d',
     });
 
+    const { AppModule } = await import('../../../01-auth/src/app.module');
     app = await createTestApp({ imports: [AppModule] });
     dataSource = app.get(DataSource);
   }, 120000);
@@ -59,32 +58,32 @@ describe('Login Flow E2E', () => {
       .post('/auth/register')
       .send(body);
 
-    return { ...user, ...res.body };
+    return { ...res.body, password: body.password };
   }
 
   it('should login with valid credentials', async () => {
-    const { user } = await registerUser();
+    const user = await registerUser();
 
     const response = await request(app.getHttpServer())
       .post('/auth/login')
       .send({
-        identifier: user.email,
+        identifier: user.user.email,
         password: user.password,
       });
 
     expect(response.status).toBe(201);
     expect(response.body.tokens.accessToken).toBeDefined();
     expect(response.body.tokens.refreshToken).toBeDefined();
-    expect(response.body.user.email).toBe(user.email);
+    expect(response.body.user.email).toBe(user.user.email);
   });
 
   it('should reject login with wrong password', async () => {
-    const { user } = await registerUser();
+    const user = await registerUser();
 
     const response = await request(app.getHttpServer())
       .post('/auth/login')
       .send({
-        identifier: user.email,
+        identifier: user.user.email,
         password: 'WrongPassword123',
       });
 
