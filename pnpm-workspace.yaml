@@ -1,0 +1,5 @@
+packages:
+  - '00-gateway'
+  - '01-auth'
+  - '02-wallet'
+  - '03-payments'
