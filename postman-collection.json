@@ -1,0 +1,621 @@
+{
+  "info": {
+    "_postman_id": "nestjs-digital-wallet-clone",
+    "name": "NestJS Digital Wallet - GraphQL API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "GraphQL API collection for the NestJS Digital Wallet microservices platform. Includes Auth, Wallet, and Payments operations with test entities."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/graphql",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "walletId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) {\n    success\n    message\n    user {\n      id\n      email\n      fullName\n      phone\n      createdAt\n    }\n    tokens {\n      accessToken\n      refreshToken\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"fullName\": \"Test User {{timestamp}}\",\n    \"email\": \"testuser{{timestamp}}@digitalwallet.test\",\n    \"phone\": \"+1234567890\",\n    \"password\": \"SecureP@ssw0rd!2026\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Register a new user with email, phone, and password. Returns JWT tokens and user profile."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  if (res.data?.register?.success) {",
+                  "    pm.collectionVariables.set('accessToken', res.data.register.tokens.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', res.data.register.tokens.refreshToken);",
+                  "    pm.collectionVariables.set('userId', res.data.register.user.id);",
+                  "    console.log('✅ Registered:', res.data.register.user.email);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) {\n    success\n    message\n    user {\n      id\n      email\n      fullName\n      phone\n    }\n    tokens {\n      accessToken\n      refreshToken\n      expiresIn\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"identifier\": \"testuser{{timestamp}}@digitalwallet.test\",\n    \"password\": \"SecureP@ssw0rd!2026\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Authenticate user with email/phone and password. Returns JWT access and refresh tokens."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const res = pm.response.json();",
+                  "  if (res.data?.login?.success) {",
+                  "    pm.collectionVariables.set('accessToken', res.data.login.tokens.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', res.data.login.tokens.refreshToken);",
+                  "    pm.collectionVariables.set('userId', res.data.login.user.id);",
+                  "    console.log('✅ Logged in as:', res.data.login.user.email);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshToken($input: RefreshTokenInput!) {\n  refreshToken(input: $input) {\n    success\n    tokens {\n      accessToken\n      refreshToken\n      expiresIn\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"refreshToken\": \"{{refreshToken}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Exchange refresh token for new access token pair."
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me {\n    id\n    email\n    fullName\n    phone\n    isVerified\n    createdAt\n    updatedAt\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Fetch authenticated user profile (requires valid JWT)."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Logout {\n  logout {\n    success\n    message\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Invalidate current refresh token and logout user."
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Wallet Operations",
+      "item": [
+        {
+          "name": "Create Wallet",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateWallet($input: CreateWalletInput!) {\n  createWallet(input: $input) {\n    success\n    message\n    wallet {\n      id\n      userId\n      currency\n      balance\n      status\n      createdAt\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"currency\": \"USD\",\n    \"initialBalance\": 0\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Create a new wallet for the authenticated user.",
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "if (pm.response.code === 200) {",
+                    "  const res = pm.response.json();",
+                    "  if (res.data?.createWallet?.success) {",
+                    "    pm.collectionVariables.set('walletId', res.data.createWallet.wallet.id);",
+                    "    console.log('✅ Wallet created:', res.data.createWallet.wallet.id);",
+                    "  }",
+                    "}"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetWallet($walletId: ID!) {\n  wallet(walletId: $walletId) {\n    id\n    userId\n    currency\n    balance\n    status\n    transactions {\n      id\n      type\n      amount\n      description\n      status\n      createdAt\n    }\n    createdAt\n    updatedAt\n  }\n}",
+                "variables": "{\n  \"walletId\": \"{{walletId}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Fetch wallet details including balance and transaction history."
+          }
+        },
+        {
+          "name": "List User Wallets",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ListWallets($page: Int, $limit: Int) {\n  wallets(page: $page, limit: $limit) {\n    totalCount\n    page\n    limit\n    items {\n      id\n      currency\n      balance\n      status\n      createdAt\n    }\n  }\n}",
+                "variables": "{\n  \"page\": 1,\n  \"limit\": 10\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Paginated list of all wallets for authenticated user."
+          }
+        },
+        {
+          "name": "Deposit Funds",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Deposit($input: DepositInput!) {\n  deposit(input: $input) {\n    success\n    message\n    transaction {\n      id\n      walletId\n      type\n      amount\n      currency\n      status\n      description\n      createdAt\n    }\n    wallet {\n      id\n      balance\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"walletId\": \"{{walletId}}\",\n    \"amount\": 100.00,\n    \"currency\": \"USD\",\n    \"description\": \"Test deposit via Postman\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Add funds to wallet (simulated deposit operation)."
+          }
+        },
+        {
+          "name": "Withdraw Funds",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Withdraw($input: WithdrawInput!) {\n  withdraw(input: $input) {\n    success\n    message\n    transaction {\n      id\n      walletId\n      type\n      amount\n      currency\n      status\n      description\n      createdAt\n    }\n    wallet {\n      id\n      balance\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"walletId\": \"{{walletId}}\",\n    \"amount\": 25.50,\n    \"currency\": \"USD\",\n    \"description\": \"Test withdrawal via Postman\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Withdraw funds from wallet (requires sufficient balance)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Payments & Transfers",
+      "item": [
+        {
+          "name": "Create Payment Intent",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreatePaymentIntent($input: CreatePaymentIntentInput!) {\n  createPaymentIntent(input: $input) {\n    success\n    paymentIntent {\n      id\n      amount\n      currency\n      status\n      recipientWalletId\n      metadata\n      createdAt\n      expiresAt\n    }\n    clientSecret\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"amount\": 49.99,\n    \"currency\": \"USD\",\n    \"recipientWalletId\": \"{{walletId}}\",\n    \"description\": \"Test payment for premium subscription\",\n    \"metadata\": {\n      \"orderId\": \"ORD-{{timestamp}}\",\n      \"productId\": \"PROD-PREMIUM-001\"\n    }\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Create a payment intent for processing (Stripe-like pattern)."
+          }
+        },
+        {
+          "name": "Transfer Between Wallets",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation TransferFunds($input: TransferInput!) {\n  transferFunds(input: $input) {\n    success\n    message\n    transfer {\n      id\n      fromWalletId\n      toWalletId\n      amount\n      currency\n      status\n      description\n      createdAt\n      completedAt\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"fromWalletId\": \"{{walletId}}\",\n    \"toWalletId\": \"WALLET-TEST-RECIPIENT-001\",\n    \"amount\": 15.00,\n    \"currency\": \"USD\",\n    \"description\": \"P2P transfer test via Postman\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Transfer funds between two wallets (P2P payment)."
+          }
+        },
+        {
+          "name": "Get Payment Status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query GetPayment($paymentId: ID!) {\n  payment(paymentId: $paymentId) {\n    id\n    amount\n    currency\n    status\n    type\n    fromWalletId\n    toWalletId\n    description\n    metadata\n    createdAt\n    updatedAt\n    completedAt\n  }\n}",
+                "variables": "{\n  \"paymentId\": \"{{paymentId}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Fetch payment/transaction details by ID."
+          }
+        },
+        {
+          "name": "List Transactions",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ListTransactions($walletId: ID!, $page: Int, $limit: Int, $type: TransactionType) {\n  transactions(walletId: $walletId, page: $page, limit: $limit, type: $type) {\n    totalCount\n    page\n    limit\n    items {\n      id\n      type\n      amount\n      currency\n      status\n      description\n      counterpartyWalletId\n      createdAt\n      completedAt\n    }\n  }\n}",
+                "variables": "{\n  \"walletId\": \"{{walletId}}\",\n  \"page\": 1,\n  \"limit\": 20,\n  \"type\": null\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Paginated transaction history for a wallet with optional type filter."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 Health & Utilities",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Health {\n  health {\n    status\n    timestamp\n    services {\n      name\n      status\n      latency\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "System health check endpoint (no auth required)."
+          }
+        },
+        {
+          "name": "GraphQL Introspection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query IntrospectionQuery {\n  __schema {\n    queryType { name }\n    mutationType { name }\n    types {\n      kind\n      name\n      description\n      fields {\n        name\n        description\n        type { name kind }\n      }\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Fetch GraphQL schema for documentation (may be disabled in production)."
+          }
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  }
+}

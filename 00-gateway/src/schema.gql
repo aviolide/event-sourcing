@@ -1,0 +1,65 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input LoginInput {
+  identifier: String!
+  password: String!
+}
+
+type LoginResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+type Mutation {
+  login(input: LoginInput!): LoginResponse!
+  refresh(input: RefreshInput!): RefreshResponse!
+  register(input: RegisterInput!): RegisterResponse!
+  transfer(input: TransferInput!): TransferResponse!
+}
+
+type Query {
+  wallet(userId: String!): WalletDto!
+}
+
+input RefreshInput {
+  refreshToken: String!
+}
+
+type RefreshResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+input RegisterInput {
+  email: String!
+  fullName: String!
+  password: String!
+  phone: String
+}
+
+type RegisterResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+input TransferInput {
+  amount: Float!
+  currency: String!
+  description: String
+  toUserId: String!
+}
+
+type TransferResponse {
+  description: String!
+  id: String!
+  status: String!
+}
+
+type WalletDto {
+  balance: Float!
+  currency: String!
+  id: String!
+  userId: String!
+}

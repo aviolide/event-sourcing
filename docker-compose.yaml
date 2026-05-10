@@ -1,0 +1,179 @@
+services:
+  postgres:
+    image: postgres:15.3
+    container_name: yupi-postgres
+    restart: always
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - yupi_pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: yupi-kafka
+    restart: always
+
+    env_file:
+      - .env
+
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      # Mandatory in cp-kafka
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # Cluster ID (Mandatory in KRaft)
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+
+      # LISTENERS
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://${KAFKA_BROKER}"
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # Topic auto-create
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+      # Logs / data
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+
+    ports:
+      - "9092:9092"
+
+    volumes:
+      - yupi_kafkadata:/var/lib/kafka/data
+      
+  # gateway:
+  #   build:
+  #     context: ./00-gateway
+  #     dockerfile: Dockerfile
+  #   container_name: yupi-gateway
+  #   restart: always
+
+  #   env_file:
+  #     - ./00-gateway/.env
+
+  #   ports:
+  #     - "3000:3000"
+
+  #   depends_on:
+  #     auth:
+  #       condition: service_started
+  #     wallet:
+  #       condition: service_started
+  #     payments:
+  #       condition: service_started
+  # auth:
+  #   build:
+  #     context: ./01-auth
+  #     dockerfile: Dockerfile
+  #   container_name: yupi-auth
+  #   restart: always
+  #   env_file:
+  #     # - .env
+  #     - ./01-auth/.env 
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_PORT: 5432
+  #     DB_NAME: ${POSTGRES_DB}
+  #     DB_USERNAME: ${POSTGRES_USER}
+  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+  #     KAFKA_BROKER: kafka:9092
+
+  #     PORT: 3010
+  #   ports:
+  #     - "3010:3010"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     kafka:
+  #       condition: service_started
+
+  # wallet:
+  #   build:
+  #     context: ./02-wallet
+  #     dockerfile: Dockerfile
+  #   container_name: yupi-wallet
+  #   restart: always
+  #   env_file:
+  #     # - .env
+  #     - ./02-wallet/.env 
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_PORT: 5432
+  #     DB_NAME: ${POSTGRES_DB}
+  #     DB_USERNAME: ${POSTGRES_USER}
+  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+  #     KAFKA_BROKER: kafka:9092
+  #     KAFKA_GROUP_ID: wallet-group
+
+  #     PORT: 3020
+  #   ports:
+  #     - "3020:3020"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     kafka:
+  #       condition: service_started
+  #     auth:
+  #       condition: service_started
+
+  # payments:
+  #   build:
+  #     context: ./03-payments
+  #     dockerfile: Dockerfile
+  #   container_name: yupi-payments
+  #   restart: always
+
+  #   env_file:
+  #     - ./03-payments/.env
+
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_PORT: 5432
+  #     DB_NAME: ${POSTGRES_DB}
+  #     DB_USERNAME: ${POSTGRES_USER}
+  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+  #     KAFKA_BROKER: kafka:9092
+  #     PORT: 3030
+
+  #   ports:
+  #     - "3030:3030"
+
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     kafka:
+  #       condition: service_started
+  #     wallet:
+  #       condition: service_started
+  #     auth:
+  #       condition: service_started
+volumes:
+  yupi_pgdata:
+  yupi_kafkadata:
