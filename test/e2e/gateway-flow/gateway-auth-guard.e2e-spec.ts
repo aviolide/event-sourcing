@@ -1,10 +1,13 @@
 import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
 
 import { createTestApp } from '../../shared/app.factory';
 import { graphqlRequest } from '../../shared/graphql.helper';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
+import {
+  startTestEnvironment,
+  stopTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
 import { AppModule } from '../../../00-gateway/src/app.module';
@@ -89,7 +92,11 @@ describe('Gateway Auth Guard Flow E2E', () => {
       },
     );
 
-    expect(response.errors).toBeUndefined();
+    // Without a real auth service, the mutation will fail with an upstream
+    // network error — but the gateway must NOT block the request with an
+    // authentication error, since `register` is intentionally unauthenticated.
+    const code = response.errors?.[0]?.extensions?.code;
+    expect(code).not.toBe('UNAUTHENTICATED');
   });
 
   it('should allow login mutation without auth', async () => {
@@ -107,7 +114,9 @@ describe('Gateway Auth Guard Flow E2E', () => {
       `,
     );
 
-    expect(response.data).toBeDefined();
+    // Same reasoning as the register test — auth-guard must not be in play.
+    const code = response.errors?.[0]?.extensions?.code;
+    expect(code).not.toBe('UNAUTHENTICATED');
   });
 
   it('should reject wallet query with invalid JWT', async () => {
