@@ -1,13 +1,35 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
+const tsJestTransform = {
+  '^.+\\.ts$': [
+    'ts-jest',
+    {
+      tsconfig: {
+        esModuleInterop: true,
+        experimentalDecorators: true,
+        emitDecoratorMetadata: true,
+        target: 'ES2023',
+        module: 'commonjs',
+        strictNullChecks: true,
+        skipLibCheck: true,
+      },
+    },
+  ],
+};
+
+const baseE2eConfig = {
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  rootDir: '.',
+  testEnvironment: 'node',
+  transform: tsJestTransform,
+};
+
 module.exports = {
-  testTimeout: 60000,
+  testTimeout: 120000,
   projects: [
     {
       displayName: 'unit',
       testMatch: ['<rootDir>/test/unit/**/*.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
+      ...baseE2eConfig,
       transform: {
         '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
       },
@@ -18,9 +40,7 @@ module.exports = {
     {
       displayName: 'integration',
       testMatch: ['<rootDir>/test/integration/**/*.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
+      ...baseE2eConfig,
       transform: {
         '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
       },
@@ -29,24 +49,60 @@ module.exports = {
       },
     },
     {
-      displayName: 'e2e',
-      testMatch: ['<rootDir>/test/e2e/**/*.e2e.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
-      transform: {
-        '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
-      },
+      displayName: 'e2e-auth',
+      testMatch: [
+        '<rootDir>/test/e2e/user-registration-flow/**/*.e2e-spec.ts',
+        '<rootDir>/test/e2e/login-flow/**/*.e2e-spec.ts',
+        '<rootDir>/test/e2e/token-refresh-flow/**/*.e2e-spec.ts',
+      ],
+      ...baseE2eConfig,
       moduleNameMapper: {
-        '^src/(.*)$': '<rootDir>/src/$1',
+        '^src/(.*)$': '<rootDir>/01-auth/src/$1',
       },
+    },
+    {
+      displayName: 'e2e-wallet',
+      testMatch: [
+        '<rootDir>/test/e2e/wallet-transfer-flow/**/*.e2e-spec.ts',
+        '<rootDir>/test/e2e/concurrency-flow/**/*.e2e-spec.ts',
+        '<rootDir>/test/e2e/kafka-reliability-flow/**/*.e2e-spec.ts',
+      ],
+      ...baseE2eConfig,
+      moduleNameMapper: {
+        '^src/(.*)$': '<rootDir>/02-wallet/src/$1',
+      },
+    },
+    {
+      displayName: 'e2e-payments',
+      testMatch: [
+        '<rootDir>/test/e2e/payment-processing-flow/**/*.e2e-spec.ts',
+      ],
+      ...baseE2eConfig,
+      moduleNameMapper: {
+        '^src/(.*)$': '<rootDir>/03-payments/src/$1',
+      },
+    },
+    {
+      displayName: 'e2e-gateway',
+      testMatch: [
+        '<rootDir>/test/e2e/gateway-flow/**/*.e2e-spec.ts',
+      ],
+      ...baseE2eConfig,
+      moduleNameMapper: {
+        '^src/(.*)$': '<rootDir>/00-gateway/src/$1',
+      },
+    },
+    {
+      displayName: 'e2e-platform',
+      testMatch: [
+        '<rootDir>/test/e2e/platform-flow/**/*.e2e-spec.ts',
+      ],
+      ...baseE2eConfig,
     },
     {
       displayName: 'contracts',
       testMatch: ['<rootDir>/test/contracts/**/*.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
+      ...baseE2eConfig,
       transform: {
         '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
       },
@@ -54,9 +110,7 @@ module.exports = {
     {
       displayName: 'chaos',
       testMatch: ['<rootDir>/test/chaos/**/*.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
+      ...baseE2eConfig,
       transform: {
         '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
       },
@@ -64,9 +118,7 @@ module.exports = {
     {
       displayName: 'performance',
       testMatch: ['<rootDir>/test/performance/**/*.spec.ts'],
-      moduleFileExtensions: ['js', 'json', 'ts'],
-      rootDir: '.',
-      testEnvironment: 'node',
+      ...baseE2eConfig,
       transform: {
         '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
       },
@@ -75,7 +127,7 @@ module.exports = {
   collectCoverageFrom: [
     'test/**/*.ts',
     '!test/**/*.spec.ts',
-    '!test/**/*.e2e.spec.ts',
+    '!test/**/*.e2e-spec.ts',
     '!test/shared/**',
     '!test/fixtures/**',
   ],

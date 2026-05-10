@@ -43,8 +43,10 @@ export async function clearTable(
 
 export async function clearAllTables(dataSource: DataSource): Promise<void> {
   const entities = dataSource.entityMetadatas;
-  for (const entity of entities) {
-    const repo = dataSource.getRepository(entity.name);
-    await repo.delete({});
-  }
+  if (entities.length === 0) return;
+
+  const tables = entities.map((meta) => `"${meta.tableName}"`);
+  await dataSource.query(
+    `TRUNCATE ${tables.join(', ')} RESTART IDENTITY CASCADE`,
+  );
 }

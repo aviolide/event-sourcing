@@ -1,30 +1,31 @@
 import { DataSource } from 'typeorm';
 import { loadStageEnv, type StageEnvConfig } from './test-env';
 import { clearAllTables, destroySharedDataSource, getSharedDataSource } from './helpers/database.helper';
-import * as path from 'path';
+import { truncateAll } from './db.helper';
 
 export abstract class BaseTest {
   protected dataSource: DataSource;
   protected env: StageEnvConfig;
 
   async beforeAll(): Promise<void> {
-    this.env = loadStageEnv(true); // Allow undefined errors to use fallback
+    this.env = loadStageEnv(true);
     try {
       this.dataSource = await getSharedDataSource(this.getEntities());
     } catch (error: any) {
-      console.warn('Failed to connect to PostgreSQL, using SQLite fallback:', error.message);
-      this.dataSource = await this.createSQLiteDataSource();
+      throw new Error(
+        `Failed to connect to PostgreSQL. Ensure Docker/Testcontainers is running. Original error: ${error.message}`,
+      );
     }
   }
 
   async beforeEach(): Promise<void> {
     await ensureConnection(this.dataSource);
-    await clearAllTables(this.dataSource);
+    await truncateAll(this.dataSource);
   }
 
   async afterEach(): Promise<void> {
     if (this.dataSource?.isInitialized) {
-      await clearAllTables(this.dataSource);
+      await truncateAll(this.dataSource);
     }
   }
 
@@ -33,19 +34,6 @@ export abstract class BaseTest {
       await this.dataSource.destroy();
     }
     await destroySharedDataSource();
-  }
-
-  protected async createSQLiteDataSource(): Promise<DataSource> {
-    const dbPath = path.resolve(process.cwd(), '.test-db', `test-${Date.now()}.sqlite`);
-    const ds = new DataSource({
-      type: 'sqlite',
-      database: dbPath,
-      entities: this.getEntities(),
-      synchronize: true,
-      logging: false,
-    });
-    await ds.initialize();
-    return ds;
   }
 
   getDataSource(): DataSource {
