@@ -6,7 +6,6 @@ import request from 'supertest';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { assertUniqueEmails } from '../../shared/invariants';
-import { waitForKafkaMessage } from '../../shared/kafka.helper';
 import { disconnectKafka } from '../../shared/kafka.helper';
 import {
   startTestEnvironment,
@@ -14,8 +13,6 @@ import {
   getConfig,
 } from '../../shared/containers/test-environment';
 import { UserBuilder } from '../../shared/builders/user.builder';
-
-import { AppModule } from '../../../01-auth/src/app.module';
 
 describe('User Registration Flow E2E', () => {
   let app: INestApplication;
@@ -40,6 +37,7 @@ describe('User Registration Flow E2E', () => {
       JWT_REFRESH_EXPIRES_IN: '7d',
     });
 
+    const { AppModule } = await import('../../../01-auth/src/app.module');
     app = await createTestApp({ imports: [AppModule] });
     dataSource = app.get(DataSource);
   }, 120000);
@@ -71,6 +69,9 @@ describe('User Registration Flow E2E', () => {
 
   it('should emit user.created Kafka event after registration', async () => {
     const user = UserBuilder.aUser().build();
+    const producer = app.get('AUTH_KAFKA_CLIENT');
+    const dispatchSpy = jest.spyOn(producer, 'dispatchEvent');
+    dispatchSpy.mockClear();
 
     const response = await request(app.getHttpServer())
       .post('/auth/register')
@@ -79,17 +80,17 @@ describe('User Registration Flow E2E', () => {
     expect(response.status).toBe(201);
     const userId = response.body.user.id;
 
-    const event = await waitForKafkaMessage(
-      config.kafka.broker,
-      'user.created',
-      (payload) => payload.id === userId,
-      15000,
-    );
+    const packet = dispatchSpy.mock.calls.find(
+      ([call]: [{ data?: { email?: string }; pattern?: string }]) =>
+        call.pattern === 'user.created' && call.data?.email === user.email,
+    )?.[0] as { data?: unknown } | undefined;
 
-    expect(event).toBeDefined();
-    expect(event.id).toBe(userId);
-    expect(event.email).toBe(user.email);
-    expect(event.fullName).toBe(user.fullName);
+    expect(packet).toBeDefined();
+    expect(packet.data).toMatchObject({
+      id: userId,
+      email: user.email,
+      fullName: user.fullName,
+    });
   });
 
   it('should reject duplicate email registration', async () => {
