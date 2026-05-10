@@ -3,22 +3,13 @@ import { INestApplication } from '@nestjs/common';
 
 import { createTestApp } from '../../shared/app.factory';
 import { graphqlRequest } from '../../shared/graphql.helper';
-import {
-  startTestEnvironment,
-  stopTestEnvironment,
-  getConfig,
-} from '../../shared/containers/test-environment';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
 import { AppModule } from '../../../00-gateway/src/app.module';
 
 describe('Gateway Auth Guard Flow E2E', () => {
   let app: INestApplication;
-  let config: ReturnType<typeof getConfig>;
-
   beforeAll(async () => {
-    config = await startTestEnvironment();
-
     Object.assign(process.env, {
       NODE_ENV: 'test',
       PORT: '3000',
@@ -36,7 +27,6 @@ describe('Gateway Auth Guard Flow E2E', () => {
 
   afterAll(async () => {
     if (app) await app.close();
-    await stopTestEnvironment();
   }, 60000);
 
   it('should reject unauthenticated wallet query', async () => {
