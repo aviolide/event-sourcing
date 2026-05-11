@@ -5,7 +5,9 @@ This is a clone of a  **production-grade digital wallet platform** built using *
 
 This project is designed as a **real-world reference architecture** for secure financial systems.
 commands
-& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" guestproperty enumerate "Ubuntu"
+ & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Ubuntu" --type headless
+ & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" guestproperty enumerate "Ubuntu"
+
 ---
 
 ## 🧱 High-Level Architecture

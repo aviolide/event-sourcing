@@ -48,12 +48,12 @@ export function loadStageEnv(allowMissing = false): StageEnvConfig {
 
   const vars = loadEnvFile(fs.existsSync(envPath) ? envPath : '');
 
-  const host = vars.POSTGRES_HOST || '192.168.137.114';
+  const host = vars.POSTGRES_HOST || '192.168.137.50';
   const port = parseInt(vars.POSTGRES_PORT || '5432', 10);
   const database = vars.POSTGRES_DB || 'yupi_test';
   const username = vars.POSTGRES_USER || 'postgres';
   const password = vars.POSTGRES_PASSWORD || 'postgres';
-  const kafkaBroker = vars.KAFKA_BROKER || '192.168.137.114:9092';
+  const kafkaBroker = vars.KAFKA_BROKER || '192.168.137.50:9092';
 
   _config = {
     db: {

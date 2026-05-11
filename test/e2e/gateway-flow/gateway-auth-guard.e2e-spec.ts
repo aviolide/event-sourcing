@@ -39,6 +39,7 @@ describe('Gateway Auth Guard Flow E2E', () => {
       }
     `);
 
+    console.log('should reject unathenticated wallet query response:', JSON.stringify(response, null, 2));
     expect(response.errors).toBeDefined();
   });
 
