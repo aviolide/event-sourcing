@@ -72,22 +72,22 @@ const refreshToken = JwtTestHelper.generateRefreshToken(userId);
 const decoded = JwtTestHelper.decodeToken(token);
 ```
 
-### Use Testcontainers
+### Use stage infrastructure
 
 ```typescript
-import { TestEnvironment } from '../shared/testcontainers/test-environment';
+import { startTestEnvironment } from '../shared/containers/test-environment';
 
 beforeAll(async () => {
-  const env = TestEnvironment.getInstance();
+  const env = startTestEnvironment.getInstance();
   await env.start();
 });
 
 afterAll(async () => {
-  await TestEnvironment.getInstance().stop();
+  await startTestEnvironment.getInstance().stop();
 });
 
 it('should connect to database', () => {
-  const config = TestEnvironment.getInstance().getPostgresConfig();
+  const config = startTestEnvironment.getInstance().getPostgresConfig();
   expect(config.url).toContain('postgresql://');
 });
 ```
@@ -154,21 +154,21 @@ describe('MyService', () => {
 ### Integration Test Template
 
 ```typescript
-import { TestEnvironment } from '../../shared/testcontainers/test-environment';
+import { startTestEnvironment } from '../../shared/containers/test-environment';
 import { DatabaseTestHelper } from '../../shared/helpers';
 
 describe('MyRepository Integration', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    const env = TestEnvironment.getInstance();
+    const env = startTestEnvironment.getInstance();
     await env.start();
     // Initialize dataSource with env.getPostgresConfig().url
   });
 
   afterAll(async () => {
     await dataSource.destroy();
-    await TestEnvironment.getInstance().stop();
+    await startTestEnvironment.getInstance().stop();
   });
 
   it('should save and retrieve', async () => {
@@ -220,7 +220,7 @@ cd test/e2e                          # End-to-end tests
 cd test/shared/factories             # Test data builders
 cd test/shared/helpers               # Test utilities
 cd test/shared/mocks                 # Service mocks
-cd test/shared/testcontainers        # Container setup
+cd test/shared/containers        # Container setup
 ```
 
 ## Useful Commands
@@ -302,7 +302,7 @@ docker exec -it yupi-postgres psql  # Connect to PostgreSQL
 | Seeders | `test/shared/seeders/` |
 | Mocks | `test/shared/mocks/` |
 | Helpers | `test/shared/helpers/` |
-| Testcontainers | `test/shared/testcontainers/` |
+| stage infrastructure | `test/shared/containers/` |
 | Unit tests | `test/unit/{service}/` |
 | Integration | `test/integration/{service}/` |
 | E2E | `test/e2e/` |
@@ -319,9 +319,9 @@ docker exec -it yupi-postgres psql  # Connect to PostgreSQL
 |-------|----------|
 | "Container not started" | Ensure Docker is running: `docker --version` |
 | "Port 5432 in use" | Kill process or stop other PostgreSQL: `docker stop yupi-postgres` |
-| "Testcontainers timeout" | Increase timeout; check Docker daemon |
+| "stage infrastructure timeout" | Increase timeout; check docker-compose or external infra |
 | "Module not found" | Run `npm install` in service directory |
-| "Connection refused" | Verify Testcontainers started successfully |
+| "Connection refused" | Verify docker-compose stage infra or external services are reachable |
 | "Port already in use" | Use `netstat -ano` to find process |
 
 ## Next Phases

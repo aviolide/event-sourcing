@@ -4,18 +4,21 @@ import { INestApplication } from '@nestjs/common';
 import { createTestApp } from '../../shared/app.factory';
 import { graphqlRequest } from '../../shared/graphql.helper';
 import { UserBuilder } from '../../shared/builders/user.builder';
+import { getConfig } from '../../shared/containers/test-environment';
 
 import { AppModule } from '../../../00-gateway/src/app.module';
 
 describe('Gateway Auth Guard Flow E2E', () => {
   let app: INestApplication;
   beforeAll(async () => {
+    const config = getConfig();
+
     Object.assign(process.env, {
       NODE_ENV: 'test',
       PORT: '3000',
-      AUTH_SERVICE_URL: 'http://localhost:3010',
-      WALLET_SERVICE_URL: 'http://localhost:3020',
-      PAYMENTS_SERVICE_URL: 'http://localhost:3030',
+      AUTH_SERVICE_URL: config.services.authUrl,
+      WALLET_SERVICE_URL: config.services.walletUrl,
+      PAYMENTS_SERVICE_URL: config.services.paymentsUrl,
       JWT_SECRET: 'test-jwt-secret-that-is-at-least-32-characters-long!!',
       CORS_ORIGINS: '',
       RATE_LIMIT_WINDOW_MS: '60000',

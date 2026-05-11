@@ -5,8 +5,14 @@ import request from 'supertest';
 
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
-import { assertNoNegativeBalances, assertTotalMoneyConserved } from '../../shared/invariants';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
+import {
+  assertNoNegativeBalances,
+  assertTotalMoneyConserved,
+} from '../../shared/invariants';
+import {
+  startTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 
 describe('Wallet Transfer Flow E2E', () => {
@@ -52,7 +58,6 @@ describe('Wallet Transfer Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {

@@ -12,7 +12,10 @@ import {
   ensureKafkaTopics,
 } from '../../shared/kafka.helper';
 import { waitUntil } from '../../shared/wait-until';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
+import {
+  startTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 
 describe('Kafka Reliability Flow E2E', () => {
   let app: INestApplication;
@@ -58,7 +61,6 @@ describe('Kafka Reliability Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {
@@ -70,12 +72,10 @@ describe('Kafka Reliability Flow E2E', () => {
     userSequence += 1;
 
     await publishEvent('user.created', userId, {
-      data: {
       id: userId,
       email: 'dup1@test.com',
       phone: '+1111111111',
       fullName: 'Dup Test 1',
-      },
     });
 
     await waitUntil(
@@ -90,12 +90,10 @@ describe('Kafka Reliability Flow E2E', () => {
     );
 
     await publishEvent('user.created', userId, {
-      data: {
       id: userId,
       email: 'dup1@test.com',
       phone: '+1111111111',
       fullName: 'Dup Test 1',
-      },
     });
 
     let rows: Array<{ balance: string }> = [];
@@ -121,21 +119,17 @@ describe('Kafka Reliability Flow E2E', () => {
     userSequence += 1;
 
     await publishEvent('user.created', user1Id, {
-      data: {
       id: user1Id,
       email: 'indep1@test.com',
       phone: '+1222222222',
       fullName: 'Indep Test 1',
-      },
     });
 
     await publishEvent('user.created', user2Id, {
-      data: {
       id: user2Id,
       email: 'indep2@test.com',
       phone: '+1333333333',
       fullName: 'Indep Test 2',
-      },
     });
 
     await waitUntil(

@@ -4,7 +4,7 @@ This guide shows how to write tests that write to real databases and clean up au
 
 ## Key Principles
 
-1. **Real Database**: Each test gets a real PostgreSQL or Kafka instance via Testcontainers
+1. **Real Database**: Tests connect to PostgreSQL/Kafka through docker-compose stage infra or external env vars
 2. **Automatic Cleanup**: `BaseTest` automatically clears the database before and after each test
 3. **Test Isolation**: Each test starts with a clean database (zero data pollution)
 4. **Transactions**: Optional transactional execution for advanced scenarios
