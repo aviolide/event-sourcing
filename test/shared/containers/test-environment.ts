@@ -1,15 +1,13 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { resolve } from 'path';
 import { Client } from 'pg';
 import { Kafka } from 'kafkajs';
 import { waitUntil } from '../wait-until';
+import { requestOk } from '../http-e2e.helper';
 
-const execFileAsync = promisify(execFile);
 let started = false;
-let ownsCompose = false;
+const checkedServices = new Set<TestServiceName>();
 
-export type TestEnvironmentMode = 'compose' | 'external';
+export type TestEnvironmentMode = 'external';
+export type TestServiceName = 'gateway' | 'auth' | 'wallet' | 'payments';
 
 export interface PostgresConnectionParams {
   host: string;
@@ -32,42 +30,32 @@ export interface TestEnvironmentConfig {
   };
 }
 
-export async function startTestEnvironment(): Promise<TestEnvironmentConfig> {
-  const mode = getMode();
-  const config = getConfig(mode);
-  if (started) return config;
-  if (config.mode === 'compose') {
-    await startDockerCompose();
-    ownsCompose = true;
+export async function startTestEnvironment(
+  services: TestServiceName[] = [],
+): Promise<TestEnvironmentConfig> {
+  const config = getConfig();
+  if (started) {
+    await waitForServices(config.services, services);
+    return config;
   }
 
   await waitForPostgres(config.postgres);
   await waitForKafka(config.kafka.broker);
+  await waitForServices(config.services, services);
   started = true;
 
   return config;
 }
 
 export async function stopTestEnvironment(): Promise<void> {
-  if (ownsCompose) {
-    await execFileAsync('docker', [
-      'compose',
-      '-f',
-      composeFile(),
-      '-p',
-      composeProjectName(),
-      'down',
-      '--remove-orphans',
-    ]);
-  }
-  ownsCompose = false;
+  checkedServices.clear();
   started = false;
 }
 
-export function getConfig(mode = getMode()): TestEnvironmentConfig {
-  const postgres = getPostgresConnectionParams(mode);
+export function getConfig(): TestEnvironmentConfig {
+  const postgres = getPostgresConnectionParams();
   return {
-    mode,
+    mode: 'external',
     postgres,
     kafka: { broker: getEnv('KAFKA_BROKER', 'localhost:9092') },
     services: {
@@ -92,24 +80,12 @@ export function isStarted(): boolean {
   return started;
 }
 
-function getMode(): TestEnvironmentMode {
-  return process.env.E2E_INFRA_MODE === 'external' ? 'external' : 'compose';
-}
-
-function getPostgresConnectionParams(mode = getMode()): PostgresConnectionParams {
-  const host = mode === 'compose' ? 'localhost' : getEnv('DB_HOST', 'localhost');
-  const port = mode === 'compose'
-    ? Number(getEnv('POSTGRES_PORT', '5432'))
-    : Number(getEnv('DB_PORT', getEnv('POSTGRES_PORT', '5432')));
-  const database = mode === 'compose'
-    ? getEnv('POSTGRES_DB', 'wallet_test')
-    : getEnv('DB_NAME', getEnv('POSTGRES_DB', 'wallet_test'));
-  const username = mode === 'compose'
-    ? getEnv('POSTGRES_USER', 'postgres')
-    : getEnv('DB_USERNAME', getEnv('POSTGRES_USER', 'postgres'));
-  const password = mode === 'compose'
-    ? getEnv('POSTGRES_PASSWORD', 'postgres')
-    : getEnv('DB_PASSWORD', getEnv('POSTGRES_PASSWORD', 'postgres'));
+function getPostgresConnectionParams(): PostgresConnectionParams {
+  const host = getEnv('DB_HOST', 'localhost');
+  const port = Number(getEnv('DB_PORT', getEnv('POSTGRES_PORT', '5432')));
+  const database = getEnv('DB_NAME', getEnv('POSTGRES_DB', 'wallet_test'));
+  const username = getEnv('DB_USERNAME', getEnv('POSTGRES_USER', 'postgres'));
+  const password = getEnv('DB_PASSWORD', getEnv('POSTGRES_PASSWORD', 'postgres'));
 
   return {
     host,
@@ -123,28 +99,6 @@ function getPostgresConnectionParams(mode = getMode()): PostgresConnectionParams
 
 function getEnv(name: string, fallback: string): string {
   return process.env[name] || fallback;
-}
-
-function composeFile(): string {
-  return resolve(process.env.E2E_COMPOSE_FILE || 'docker-compose.stage.yaml');
-}
-
-function composeProjectName(): string {
-  return process.env.E2E_COMPOSE_PROJECT || 'event-sourcing-e2e';
-}
-
-async function startDockerCompose(): Promise<void> {
-  await execFileAsync('docker', [
-    'compose',
-    '-f',
-    composeFile(),
-    '-p',
-    composeProjectName(),
-    'up',
-    '-d',
-    'postgres',
-    'kafka',
-  ]);
 }
 
 async function waitForPostgres(config: PostgresConnectionParams): Promise<void> {
@@ -192,5 +146,32 @@ async function waitForKafka(broker: string): Promise<void> {
       }
     },
     { timeout: 60000, interval: 1000, message: 'Kafka is not ready' },
+  );
+}
+
+async function waitForServices(
+  services: TestEnvironmentConfig['services'],
+  serviceNames: TestServiceName[],
+): Promise<void> {
+  for (const serviceName of serviceNames) {
+    if (checkedServices.has(serviceName)) continue;
+    await waitForService(serviceName, services[`${serviceName}Url`]);
+    checkedServices.add(serviceName);
+  }
+}
+
+async function waitForService(
+  serviceName: TestServiceName,
+  url: string,
+): Promise<void> {
+  await waitUntil(
+    async () => {
+      return requestOk(url);
+    },
+    {
+      timeout: 60000,
+      interval: 1000,
+      message: `${serviceName} service is not ready at ${url}`,
+    },
   );
 }

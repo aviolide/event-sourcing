@@ -6,7 +6,7 @@
 Core utilities and abstractions for all tests.
 
 - **containers/** - Stage infrastructure connectors
-  - `test-environment.ts` - Connects to docker-compose or external PostgreSQL/Kafka
+  - `test-environment.ts` - Connects to manually running PostgreSQL/Kafka/services
 
 - **factories/** - Test data generation
   - `user.factory.ts` - User entity builder
@@ -61,7 +61,7 @@ integration/
 
 **Run:** `npm run test:integration`
 
-**Note:** Uses docker-compose stage infrastructure or externally supplied PostgreSQL/Kafka endpoints.
+**Note:** Uses manually running PostgreSQL/Kafka endpoints supplied through env vars.
 
 ### `/test/e2e/` - End-to-End Tests
 Full workflow tests simulating real user scenarios.
@@ -127,6 +127,10 @@ cd ../00-gateway && npm install
 
 ### Running Tests
 ```bash
+# Start services manually first
+pnpm compose:stage:infra
+pnpm compose:stage:services
+
 # All tests
 npm test
 
@@ -172,11 +176,11 @@ const token = JwtTestHelper.generateAccessToken(userId, email);
 const decoded = JwtTestHelper.decodeToken(token);
 ```
 
-### Using stage infrastructure
+### Using manually running stage infrastructure
 ```typescript
 import { startTestEnvironment } from '../shared/containers/test-environment';
 
-const config = await startTestEnvironment();
+const config = await startTestEnvironment(['auth']);
 process.env.DB_HOST = config.postgres.host;
 process.env.KAFKA_BROKER = config.kafka.broker;
 ```
@@ -239,10 +243,10 @@ process.env.KAFKA_BROKER = config.kafka.broker;
 
 | Issue | Solution |
 |-------|----------|
-| Docker containers won't start | Ensure Docker daemon is running |
-| Port conflicts | Check for existing containers: `docker ps` |
+| Stage services are unreachable | Start PostgreSQL, Kafka, and microservices manually |
+| Port conflicts | Check for existing processes on service ports |
 | Module not found | Run `npm install` in service directory |
-| Tests timeout | Increase timeout or check container logs |
+| Tests timeout | Increase timeout or check stage service logs |
 
 ## 📞 Support Files
 

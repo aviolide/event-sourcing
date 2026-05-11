@@ -1,62 +1,55 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import {
   startTestEnvironment,
-  getConfig,
 } from '../../shared/containers/test-environment';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import { UserBuilder } from '../../shared/builders/user.builder';
+import { postJson } from '../../shared/http-e2e.helper';
+
+interface AuthResponseBody {
+  user: {
+    email: string;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
 
 describe('Login Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
+  let authUrl: string;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment();
+    const config = await startTestEnvironment(['auth']);
+    authUrl = config.services.authUrl;
 
-    Object.assign(process.env, {
-      PORT: '3010',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'auth-test-client',
-      JWT_SECRET: 'test-jwt-secret-that-is-at-least-32-characters-long!!',
-      JWT_EXPIRES_IN: '15m',
-      JWT_REFRESH_SECRET: 'test-refresh-secret-that-is-at-least-32-chars!!',
-      JWT_REFRESH_EXPIRES_IN: '7d',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../01-auth/src/app.module');
-    app = await createTestApp({ imports: [AppModule] });
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
   });
 
   async function registerUser(overrides = {}) {
     const user = UserBuilder.aUser().build();
     const body = { ...user, ...overrides };
 
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(body);
+    const res = await postJson<AuthResponseBody>(`${authUrl}/auth/register`, body);
 
     return { ...res.body, password: body.password };
   }
@@ -64,12 +57,10 @@ describe('Login Flow E2E', () => {
   it('should login with valid credentials', async () => {
     const user = await registerUser();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        identifier: user.user.email,
-        password: user.password,
-      });
+    const response = await postJson<AuthResponseBody>(`${authUrl}/auth/login`, {
+      identifier: user.user.email,
+      password: user.password,
+    });
 
     expect(response.status).toBe(201);
     expect(response.body.tokens.accessToken).toBeDefined();
@@ -80,31 +71,25 @@ describe('Login Flow E2E', () => {
   it('should reject login with wrong password', async () => {
     const user = await registerUser();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        identifier: user.user.email,
-        password: 'WrongPassword123',
-      });
+    const response = await postJson(`${authUrl}/auth/login`, {
+      identifier: user.user.email,
+      password: 'WrongPassword123',
+    });
 
     expect(response.status).toBe(401);
   });
 
   it('should reject login with nonexistent email', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        identifier: 'nonexistent@test.com',
-        password: 'Password123',
-      });
+    const response = await postJson(`${authUrl}/auth/login`, {
+      identifier: 'nonexistent@test.com',
+      password: 'Password123',
+    });
 
     expect(response.status).toBe(401);
   });
 
   it('should reject login with invalid body', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({});
+    const response = await postJson(`${authUrl}/auth/login`, {});
 
     expect(response.status).toBe(400);
   });

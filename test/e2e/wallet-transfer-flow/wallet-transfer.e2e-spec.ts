@@ -1,67 +1,53 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import {
   assertNoNegativeBalances,
   assertTotalMoneyConserved,
 } from '../../shared/invariants';
-import {
-  startTestEnvironment,
-  getConfig,
-} from '../../shared/containers/test-environment';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
+import { startTestEnvironment } from '../../shared/containers/test-environment';
+import { getJson, postJson } from '../../shared/http-e2e.helper';
+
+interface WalletResponseBody {
+  userId: string;
+  balance: string;
+  currency: string;
+}
+
+interface WalletTransferResponseBody {
+  from: { balance: string };
+  to: { balance: string };
+}
 
 describe('Wallet Transfer Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
+  let walletUrl: string;
   let senderId: string;
   let receiverId: string;
   let idSequence = 1;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment();
+    const config = await startTestEnvironment(['wallet']);
+    walletUrl = config.services.walletUrl;
 
-    Object.assign(process.env, {
-      PORT: '3020',
-      SERVICE_NAME: 'wallet-test-service',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'wallet-test-client',
-      KAFKA_GROUP_ID: 'wallet-test-group',
-      NODE_ENV: 'test',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../02-wallet/src/app.module');
-
-    app = await createTestApp({
-      imports: [AppModule],
-      connectMicroservice: {
-        broker: config.kafka.broker,
-        groupId: 'wallet-test-group',
-        clientId: 'wallet-test-client',
-      },
-    });
-
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
 
     senderId = `11111111-1111-4111-8111-${String(idSequence).padStart(12, '1')}`;
     receiverId = `22222222-2222-4222-8222-${String(idSequence).padStart(12, '2')}`;
@@ -78,8 +64,8 @@ describe('Wallet Transfer Flow E2E', () => {
   });
 
   it('should get wallet by userId', async () => {
-    const response = await request(app.getHttpServer()).get(
-      `/wallets/${senderId}`,
+    const response = await getJson<WalletResponseBody>(
+      `${walletUrl}/wallets/${senderId}`,
     );
 
     expect(response.status).toBe(200);
@@ -89,22 +75,23 @@ describe('Wallet Transfer Flow E2E', () => {
   });
 
   it('should return 404 for nonexistent wallet', async () => {
-    const response = await request(app.getHttpServer()).get(
-      `/wallets/99999999-9999-9999-9999-999999999999`,
+    const response = await getJson(
+      `${walletUrl}/wallets/99999999-9999-9999-9999-999999999999`,
     );
 
     expect(response.status).toBe(404);
   });
 
   it('should transfer money between wallets', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/wallets/transfer')
-      .send({
+    const response = await postJson<WalletTransferResponseBody>(
+      `${walletUrl}/wallets/transfer`,
+      {
         fromUserId: senderId,
         toUserId: receiverId,
         amount: 100,
         currency: 'PEN',
-      });
+      },
+    );
 
     expect(response.status).toBe(201);
     expect(parseFloat(response.body.from.balance)).toBe(900);
@@ -115,14 +102,12 @@ describe('Wallet Transfer Flow E2E', () => {
   });
 
   it('should reject transfer with insufficient funds', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/wallets/transfer')
-      .send({
-        fromUserId: senderId,
-        toUserId: receiverId,
-        amount: 9999,
-        currency: 'PEN',
-      });
+    const response = await postJson(`${walletUrl}/wallets/transfer`, {
+      fromUserId: senderId,
+      toUserId: receiverId,
+      amount: 9999,
+      currency: 'PEN',
+    });
 
     expect(response.status).toBe(400);
 
@@ -131,38 +116,32 @@ describe('Wallet Transfer Flow E2E', () => {
   });
 
   it('should reject transfer to nonexistent wallet', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/wallets/transfer')
-      .send({
-        fromUserId: senderId,
-        toUserId: '99999999-9999-4999-9999-999999999999',
-        amount: 100,
-        currency: 'PEN',
-      });
+    const response = await postJson(`${walletUrl}/wallets/transfer`, {
+      fromUserId: senderId,
+      toUserId: '99999999-9999-4999-9999-999999999999',
+      amount: 100,
+      currency: 'PEN',
+    });
 
     expect(response.status).toBe(404);
   });
 
   it('should reject transfer to self', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/wallets/transfer')
-      .send({
-        fromUserId: senderId,
-        toUserId: senderId,
-        amount: 100,
-        currency: 'PEN',
-      });
+    const response = await postJson(`${walletUrl}/wallets/transfer`, {
+      fromUserId: senderId,
+      toUserId: senderId,
+      amount: 100,
+      currency: 'PEN',
+    });
 
     expect(response.status).toBe(400);
   });
 
   it('should reject transfer with invalid body', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/wallets/transfer')
-      .send({
-        fromUserId: senderId,
-        toUserId: receiverId,
-      });
+    const response = await postJson(`${walletUrl}/wallets/transfer`, {
+      fromUserId: senderId,
+      toUserId: receiverId,
+    });
 
     expect(response.status).toBe(400);
   });

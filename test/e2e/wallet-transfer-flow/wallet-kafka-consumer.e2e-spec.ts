@@ -1,15 +1,11 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
-import { assertWalletCount } from '../../shared/invariants';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import {
   createKafkaProducer,
   publishEvent,
   disconnectKafka,
-  ensureKafkaTopics,
 } from '../../shared/kafka.helper';
 import { waitUntil } from '../../shared/wait-until';
 import {
@@ -18,53 +14,33 @@ import {
 } from '../../shared/containers/test-environment';
 
 describe('Wallet Kafka Consumer Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
   let config: ReturnType<typeof getConfig>;
   let userSequence = 1;
 
   beforeAll(async () => {
-    config = await startTestEnvironment();
+    config = await startTestEnvironment(['wallet']);
 
-    Object.assign(process.env, {
-      PORT: '3021',
-      SERVICE_NAME: 'wallet-test-service',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'wallet-kafka-test-client',
-      KAFKA_GROUP_ID: 'wallet-kafka-test-group',
-      NODE_ENV: 'test',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../02-wallet/src/app.module');
-
-    app = await createTestApp({
-      imports: [AppModule],
-      connectMicroservice: {
-        broker: config.kafka.broker,
-        groupId: 'wallet-kafka-test-group',
-        clientId: 'wallet-kafka-test-client',
-      },
-    });
-
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
 
     await createKafkaProducer(config.kafka.broker);
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
+    if (dataSource?.isInitialized) await dataSource.destroy();
     await disconnectKafka();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
   });
 
   it('should create wallet when user.created event is received', async () => {

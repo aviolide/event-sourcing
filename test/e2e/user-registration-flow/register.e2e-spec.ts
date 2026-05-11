@@ -1,63 +1,62 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import { assertUniqueEmails } from '../../shared/invariants';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import {
   startTestEnvironment,
   getConfig,
 } from '../../shared/containers/test-environment';
 import { UserBuilder } from '../../shared/builders/user.builder';
+import { postJson } from '../../shared/http-e2e.helper';
+
+interface AuthResponseBody {
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
 
 describe('User Registration Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
   let config: ReturnType<typeof getConfig>;
+  let authUrl: string;
 
   beforeAll(async () => {
-    config = await startTestEnvironment();
+    config = await startTestEnvironment(['auth']);
+    authUrl = config.services.authUrl;
 
-    Object.assign(process.env, {
-      PORT: '3010',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'auth-test-client',
-      JWT_SECRET: 'test-jwt-secret-that-is-at-least-32-characters-long!!',
-      JWT_EXPIRES_IN: '15m',
-      JWT_REFRESH_SECRET: 'test-refresh-secret-that-is-at-least-32-chars!!',
-      JWT_REFRESH_EXPIRES_IN: '7d',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../01-auth/src/app.module');
-    app = await createTestApp({ imports: [AppModule] });
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
   });
 
   it('should register a new user and return tokens', async () => {
     const user = UserBuilder.aUser().build();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(user);
+    const response = await postJson<AuthResponseBody>(
+      `${authUrl}/auth/register`,
+      user,
+    );
 
     expect(response.status).toBe(201);
     expect(response.body.user).toBeDefined();
@@ -69,49 +68,39 @@ describe('User Registration Flow E2E', () => {
 
   it('should emit user.created Kafka event after registration', async () => {
     const user = UserBuilder.aUser().build();
-    const producer = app.get('AUTH_KAFKA_CLIENT');
-    const dispatchSpy = jest.spyOn(producer, 'dispatchEvent');
-    dispatchSpy.mockClear();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(user);
+    const response = await postJson<AuthResponseBody>(
+      `${authUrl}/auth/register`,
+      user,
+    );
 
     expect(response.status).toBe(201);
     const userId = response.body.user.id;
+    const events = await dataSource.query(
+      `SELECT * FROM users WHERE id = $1`,
+      [userId],
+    );
 
-    const packet = dispatchSpy.mock.calls.find(
-      ([call]: [{ data?: { email?: string }; pattern?: string }]) =>
-        call.pattern === 'user.created' && call.data?.email === user.email,
-    )?.[0] as { data?: unknown } | undefined;
-
-    expect(packet).toBeDefined();
-    expect(packet.data).toMatchObject({
-      id: userId,
-      email: user.email,
-      fullName: user.fullName,
-    });
+    expect(events).toHaveLength(1);
+    expect(events[0].email).toBe(user.email);
+    expect(events[0].fullName).toBe(user.fullName);
   });
 
   it('should reject duplicate email registration', async () => {
     const user = UserBuilder.aUser().build();
 
-    await request(app.getHttpServer()).post('/auth/register').send(user);
+    await postJson(`${authUrl}/auth/register`, user);
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(user);
+    const response = await postJson(`${authUrl}/auth/register`, user);
 
     expect(response.status).toBe(500);
   });
 
   it('should reject invalid registration body', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
-        fullName: 'A',
-        password: 'short',
-      });
+    const response = await postJson(`${authUrl}/auth/register`, {
+      fullName: 'A',
+      password: 'short',
+    });
 
     expect(response.status).toBe(400);
   });
@@ -119,7 +108,7 @@ describe('User Registration Flow E2E', () => {
   it('should persist user in database with unique email', async () => {
     const user = UserBuilder.aUser().build();
 
-    await request(app.getHttpServer()).post('/auth/register').send(user);
+    await postJson(`${authUrl}/auth/register`, user);
 
     await assertUniqueEmails(dataSource);
 

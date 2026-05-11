@@ -1,60 +1,53 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import {
   startTestEnvironment,
-  getConfig,
 } from '../../shared/containers/test-environment';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import { UserBuilder } from '../../shared/builders/user.builder';
+import { postJson } from '../../shared/http-e2e.helper';
+
+interface AuthResponseBody {
+  user: {
+    id: string;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
 
 describe('Token Refresh Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
+  let authUrl: string;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment();
+    const config = await startTestEnvironment(['auth']);
+    authUrl = config.services.authUrl;
 
-    Object.assign(process.env, {
-      PORT: '3010',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'auth-test-client',
-      JWT_SECRET: 'test-jwt-secret-that-is-at-least-32-characters-long!!',
-      JWT_EXPIRES_IN: '15m',
-      JWT_REFRESH_SECRET: 'test-refresh-secret-that-is-at-least-32-chars!!',
-      JWT_REFRESH_EXPIRES_IN: '7d',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../01-auth/src/app.module');
-    app = await createTestApp({ imports: [AppModule] });
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
   });
 
   async function registerAndGetTokens() {
     const user = UserBuilder.aUser().build();
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(user);
+    const res = await postJson<AuthResponseBody>(`${authUrl}/auth/register`, user);
 
     return {
       user,
@@ -68,10 +61,11 @@ describe('Token Refresh Flow E2E', () => {
     const { accessToken, refreshToken, userId } =
       await registerAndGetTokens();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ refreshToken });
+    const response = await postJson<AuthResponseBody>(
+      `${authUrl}/auth/refresh`,
+      { refreshToken },
+      accessToken,
+    );
 
     expect(response.status).toBe(201);
     expect(response.body.tokens.accessToken).toBeDefined();
@@ -83,18 +77,20 @@ describe('Token Refresh Flow E2E', () => {
   it('should reject reused refresh token', async () => {
     const { accessToken, refreshToken } = await registerAndGetTokens();
 
-    const firstRefresh = await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ refreshToken });
+    const firstRefresh = await postJson<AuthResponseBody>(
+      `${authUrl}/auth/refresh`,
+      { refreshToken },
+      accessToken,
+    );
 
     expect(firstRefresh.status).toBe(201);
     const newAccessToken = firstRefresh.body.tokens.accessToken;
 
-    const secondRefresh = await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .set('Authorization', `Bearer ${newAccessToken}`)
-      .send({ refreshToken });
+    const secondRefresh = await postJson(
+      `${authUrl}/auth/refresh`,
+      { refreshToken },
+      newAccessToken,
+    );
 
     expect(secondRefresh.status).toBe(401);
   });
@@ -102,9 +98,7 @@ describe('Token Refresh Flow E2E', () => {
   it('should reject refresh without auth header', async () => {
     const { refreshToken } = await registerAndGetTokens();
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .send({ refreshToken });
+    const response = await postJson(`${authUrl}/auth/refresh`, { refreshToken });
 
     expect(response.status).toBe(401);
   });

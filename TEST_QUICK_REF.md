@@ -5,12 +5,16 @@
 ```bash
 # From root directory
 
+# Start manually managed stage services before e2e
+pnpm compose:stage:infra
+pnpm compose:stage:services
+
 # All tests
 npm test
 
 # By type
 npm run test:unit                 # Unit tests only
-npm run test:integration          # Integration tests with containers
+npm run test:integration          # Integration tests with stage infrastructure
 npm run test:e2e                  # End-to-end workflows
 npm run test:contracts            # Schema & contract tests
 npm run test:chaos                # Chaos engineering tests
@@ -72,22 +76,17 @@ const refreshToken = JwtTestHelper.generateRefreshToken(userId);
 const decoded = JwtTestHelper.decodeToken(token);
 ```
 
-### Use stage infrastructure
+### Use manually running stage infrastructure
 
 ```typescript
 import { startTestEnvironment } from '../shared/containers/test-environment';
 
 beforeAll(async () => {
-  const env = startTestEnvironment.getInstance();
-  await env.start();
-});
-
-afterAll(async () => {
-  await startTestEnvironment.getInstance().stop();
+  await startTestEnvironment(['auth']);
 });
 
 it('should connect to database', () => {
-  const config = startTestEnvironment.getInstance().getPostgresConfig();
+  const config = getConfig().postgres;
   expect(config.url).toContain('postgresql://');
 });
 ```
@@ -161,14 +160,12 @@ describe('MyRepository Integration', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    const env = startTestEnvironment.getInstance();
-    await env.start();
-    // Initialize dataSource with env.getPostgresConfig().url
+    const env = await startTestEnvironment();
+    // Initialize dataSource with env.postgres.url
   });
 
   afterAll(async () => {
     await dataSource.destroy();
-    await startTestEnvironment.getInstance().stop();
   });
 
   it('should save and retrieve', async () => {
@@ -220,7 +217,7 @@ cd test/e2e                          # End-to-end tests
 cd test/shared/factories             # Test data builders
 cd test/shared/helpers               # Test utilities
 cd test/shared/mocks                 # Service mocks
-cd test/shared/containers        # Container setup
+cd test/shared/containers        # Stage infrastructure connectors
 ```
 
 ## Useful Commands
@@ -263,12 +260,12 @@ npm run test:debug -- auth.spec.ts
 # Then open chrome://inspect
 ```
 
-### Check container status
+### Check stage service status
 ```bash
-docker ps                           # See running containers
-docker logs yupi-postgres          # PostgreSQL logs
-docker logs yupi-kafka              # Kafka logs
-docker exec -it yupi-postgres psql  # Connect to PostgreSQL
+curl http://localhost:3010          # Auth service
+curl http://localhost:3020          # Wallet service
+curl http://localhost:3030          # Payments service
+curl http://localhost:3000/graphql  # Gateway service
 ```
 
 ## Performance Tips
@@ -292,7 +289,7 @@ docker exec -it yupi-postgres psql  # Connect to PostgreSQL
    - See `/test/shared/mocks/`
 
 5. **Reuse test environment** across tests
-   - Don't restart containers per test
+   - Don't restart manual infrastructure per test
 
 ## File Locations
 
@@ -317,11 +314,9 @@ docker exec -it yupi-postgres psql  # Connect to PostgreSQL
 
 | Issue | Solution |
 |-------|----------|
-| "Container not started" | Ensure Docker is running: `docker --version` |
-| "Port 5432 in use" | Kill process or stop other PostgreSQL: `docker stop yupi-postgres` |
-| "stage infrastructure timeout" | Increase timeout; check docker-compose or external infra |
+| "Stage infrastructure timeout" | Increase timeout; verify manual DB/Kafka/services are running |
 | "Module not found" | Run `npm install` in service directory |
-| "Connection refused" | Verify docker-compose stage infra or external services are reachable |
+| "Connection refused" | Verify manually running stage services are reachable |
 | "Port already in use" | Use `netstat -ano` to find process |
 
 ## Next Phases
