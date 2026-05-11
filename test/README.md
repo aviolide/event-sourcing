@@ -5,10 +5,8 @@
 ### `/test/shared/` - Shared Test Infrastructure
 Core utilities and abstractions for all tests.
 
-- **testcontainers/** - Container lifecycle management
-  - `postgres-container.ts` - PostgreSQL container wrapper
-  - `kafka-container.ts` - Kafka container wrapper
-  - `test-environment.ts` - Orchestrates both containers
+- **containers/** - Stage infrastructure connectors
+  - `test-environment.ts` - Connects to docker-compose or external PostgreSQL/Kafka
 
 - **factories/** - Test data generation
   - `user.factory.ts` - User entity builder
@@ -63,7 +61,7 @@ integration/
 
 **Run:** `npm run test:integration`
 
-**Note:** Uses Testcontainers for isolated PostgreSQL and Kafka instances.
+**Note:** Uses docker-compose stage infrastructure or externally supplied PostgreSQL/Kafka endpoints.
 
 ### `/test/e2e/` - End-to-End Tests
 Full workflow tests simulating real user scenarios.
@@ -174,13 +172,13 @@ const token = JwtTestHelper.generateAccessToken(userId, email);
 const decoded = JwtTestHelper.decodeToken(token);
 ```
 
-### Using Testcontainers
+### Using stage infrastructure
 ```typescript
-import { TestEnvironment } from '../shared/testcontainers/test-environment';
+import { startTestEnvironment } from '../shared/containers/test-environment';
 
-const env = TestEnvironment.getInstance();
-await env.start();
-const config = env.getPostgresConfig();
+const config = await startTestEnvironment();
+process.env.DB_HOST = config.postgres.host;
+process.env.KAFKA_BROKER = config.kafka.broker;
 ```
 
 ## 📖 Documentation
@@ -214,7 +212,7 @@ const config = env.getPostgresConfig();
 ## 🎯 Test Coverage
 
 ### Phase 1-2 Complete ✅
-- [x] Testcontainers infrastructure
+- [x] Stage infrastructure connectors
 - [x] Test data factories
 - [x] Database seeders
 - [x] Service mocks

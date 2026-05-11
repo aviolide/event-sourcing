@@ -8,10 +8,8 @@
 // seed the auth service's expected configuration.
 //
 // The placeholder Postgres/Kafka values below only exist so Zod validation
-// passes when AppModule is first imported. The spec's `beforeAll` overrides
-// them with the actual testcontainer endpoints before the Nest app boots, and
-// because `ConfigModule` is configured with the default `cache: false`,
-// `ConfigService.get(...)` re-reads `process.env` at runtime.
+// passes when AppModule is first imported. Specs override them with the active
+// docker-compose or external infra endpoints before the Nest app boots.
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'test';
 process.env.PORT = process.env.PORT ?? '3010';
 process.env.DB_HOST = process.env.DB_HOST ?? 'localhost';
@@ -19,7 +17,7 @@ process.env.DB_PORT = process.env.DB_PORT ?? '5432';
 process.env.DB_NAME = process.env.DB_NAME ?? 'auth_test';
 process.env.DB_USERNAME = process.env.DB_USERNAME ?? 'postgres';
 process.env.DB_PASSWORD = process.env.DB_PASSWORD ?? 'postgres';
-process.env.KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'localhost:9093';
+process.env.KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'localhost:9092';
 process.env.KAFKA_CLIENT_ID = process.env.KAFKA_CLIENT_ID ?? 'auth-test-client';
 process.env.JWT_SECRET =
   process.env.JWT_SECRET ??

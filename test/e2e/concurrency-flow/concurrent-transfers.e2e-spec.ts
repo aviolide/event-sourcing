@@ -11,7 +11,6 @@ import {
 } from '../../shared/invariants';
 import {
   startTestEnvironment,
-  stopTestEnvironment,
   getConfig,
 } from '../../shared/containers/test-environment';
 import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
@@ -59,7 +58,6 @@ describe('Concurrent Transfers Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {

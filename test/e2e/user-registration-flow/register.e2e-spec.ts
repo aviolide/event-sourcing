@@ -9,7 +9,6 @@ import { assertUniqueEmails } from '../../shared/invariants';
 import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import {
   startTestEnvironment,
-  stopTestEnvironment,
   getConfig,
 } from '../../shared/containers/test-environment';
 import { UserBuilder } from '../../shared/builders/user.builder';
@@ -47,7 +46,6 @@ describe('User Registration Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {

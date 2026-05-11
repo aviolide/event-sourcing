@@ -6,8 +6,11 @@ import request from 'supertest';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { createTestJwt } from '../../shared/jwt.helper';
-import { disconnectKafka } from '../../shared/kafka.helper';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
+import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
+import {
+  startTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 import { HttpServiceMock } from '../../shared/mocks/http-service.mock';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
@@ -35,10 +38,11 @@ describe('Payment Processing Flow E2E', () => {
       KAFKA_CLIENT_ID: 'payments-test-client',
       KAFKA_GROUP_ID: 'payments-test-group',
       JWT_SECRET: JWT_SECRET,
-      WALLET_SERVICE_URL: 'http://localhost:3020',
+      WALLET_SERVICE_URL: config.services.walletUrl,
     });
 
     httpMock = new HttpServiceMock();
+    await ensureKafkaTopics(config.kafka.broker, ['wallet.transfer.processed']);
 
     const { AppModule } = await import('../../../03-payments/src/app.module');
 
@@ -58,7 +62,6 @@ describe('Payment Processing Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {

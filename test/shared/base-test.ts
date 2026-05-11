@@ -8,12 +8,12 @@ export abstract class BaseTest {
   protected env: StageEnvConfig;
 
   async beforeAll(): Promise<void> {
-    this.env = loadStageEnv(true);
+    this.env = loadStageEnv();
     try {
       this.dataSource = await getSharedDataSource(this.getEntities());
     } catch (error: any) {
       throw new Error(
-        `Failed to connect to PostgreSQL. Ensure Docker/Testcontainers is running. Original error: ${error.message}`,
+        `Failed to connect to PostgreSQL. Ensure docker-compose stage infra or external DB env vars are available. Original error: ${error.message}`,
       );
     }
   }
@@ -41,7 +41,7 @@ export abstract class BaseTest {
   }
 
   getEnv(): StageEnvConfig {
-    return this.env || loadStageEnv(true);
+    return this.env || loadStageEnv();
   }
 
   protected getEntities(): any[] {

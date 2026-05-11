@@ -1,6 +1,9 @@
 import { Kafka, Producer, Consumer } from 'kafkajs';
 import { waitUntil } from './wait-until';
 
+process.env.KAFKAJS_NO_PARTITIONER_WARNING =
+  process.env.KAFKAJS_NO_PARTITIONER_WARNING ?? '1';
+
 let producer: Producer | null = null;
 let createdTopics: string[] = [];
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This comprehensive test suite infrastructure supports unit, integration, e2e, contract, chaos, and performance testing using NestJS, Jest, Testcontainers, and TypeORM.
+This comprehensive test suite infrastructure supports unit, integration, e2e, contract, chaos, and performance testing using NestJS, Jest, stage infrastructure, and TypeORM.
 
 ## Structure
 
@@ -40,9 +40,9 @@ test/
 │   └── *.json
 │
 └── shared/                        # Shared test utilities
-    ├── testcontainers/            # Testcontainers setup
-    │   ├── postgres-container.ts
-    │   ├── kafka-container.ts
+    ├── containers/            # stage infrastructure setup
+    │   ├── test-environment.ts
+    │   ├── test-environment.ts
     │   └── test-environment.ts
     ├── factories/                 # Test data generation
     │   ├── user.factory.ts
@@ -121,28 +121,28 @@ npm run test:e2e           # E2E tests (if available)
 
 ## Core Components
 
-### 1. Testcontainers
+### 1. stage infrastructure
 
 Automatically spins up isolated PostgreSQL and Kafka containers for each test suite.
 
 **Files:**
-- `test/shared/testcontainers/postgres-container.ts` - PostgreSQL container management
-- `test/shared/testcontainers/kafka-container.ts` - Kafka container management
-- `test/shared/testcontainers/test-environment.ts` - Orchestrates both containers
+- `test/shared/containers/test-environment.ts` - PostgreSQL container management
+- `test/shared/containers/test-environment.ts` - Kafka container management
+- `test/shared/containers/test-environment.ts` - Orchestrates both containers
 
 **Usage:**
 
 ```typescript
-import { TestEnvironment } from '../shared/testcontainers/test-environment';
+import { startTestEnvironment } from '../shared/containers/test-environment';
 
 describe('My Test Suite', () => {
   beforeAll(async () => {
-    const env = TestEnvironment.getInstance();
+    const env = startTestEnvironment.getInstance();
     await env.start();
   });
 
   afterAll(async () => {
-    const env = TestEnvironment.getInstance();
+    const env = startTestEnvironment.getInstance();
     await env.stop();
   });
 
@@ -287,7 +287,7 @@ describe('UserService', () => {
 
 ```typescript
 import { DataSource } from 'typeorm';
-import { TestEnvironment } from '../../shared/testcontainers/test-environment';
+import { startTestEnvironment } from '../../shared/containers/test-environment';
 import { DatabaseTestHelper } from '../../shared/helpers';
 import { UserFactory } from '../../shared/factories';
 
@@ -295,7 +295,7 @@ describe('AuthRepository Integration', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    const env = TestEnvironment.getInstance();
+    const env = startTestEnvironment.getInstance();
     await env.start();
 
     dataSource = new DataSource({
@@ -310,7 +310,7 @@ describe('AuthRepository Integration', () => {
 
   afterAll(async () => {
     await dataSource.destroy();
-    await TestEnvironment.getInstance().stop();
+    await startTestEnvironment.getInstance().stop();
   });
 
   it('should save and retrieve user from database', async () => {

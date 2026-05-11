@@ -9,11 +9,17 @@
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'test';
 process.env.PORT = process.env.PORT ?? '3000';
 process.env.AUTH_SERVICE_URL =
-  process.env.AUTH_SERVICE_URL ?? 'http://localhost:3010';
+  process.env.AUTH_SERVICE_URL ??
+  process.env.GATEWAY_AUTH_SERVICE_URL ??
+  'http://localhost:3010';
 process.env.WALLET_SERVICE_URL =
-  process.env.WALLET_SERVICE_URL ?? 'http://localhost:3020';
+  process.env.WALLET_SERVICE_URL ??
+  process.env.GATEWAY_WALLET_SERVICE_URL ??
+  'http://localhost:3020';
 process.env.PAYMENTS_SERVICE_URL =
-  process.env.PAYMENTS_SERVICE_URL ?? 'http://localhost:3030';
+  process.env.PAYMENTS_SERVICE_URL ??
+  process.env.GATEWAY_PAYMENTS_SERVICE_URL ??
+  'http://localhost:3030';
 process.env.JWT_SECRET =
   process.env.JWT_SECRET ??
   'test-jwt-secret-that-is-at-least-32-characters-long!!';

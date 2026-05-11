@@ -1,14 +1,15 @@
 import 'reflect-metadata';
-import { INestApplication, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 import { ChildProcess, spawn } from 'child_process';
 
 import { truncateAllPublicTables } from '../../shared/db.helper';
-import { assertNoNegativeBalances, assertTotalMoneyConserved } from '../../shared/invariants';
+import { assertNoNegativeBalances } from '../../shared/invariants';
 import { waitUntil } from '../../shared/wait-until';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
-import { graphqlRequest } from '../../shared/graphql.helper';
+import {
+  startTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 
 const JWT_SECRET = 'test-jwt-secret-that-is-at-least-32-characters-long!!';
 
@@ -43,17 +44,17 @@ function spawnService(
   return proc;
 }
 
-async function waitForPort(port: number, timeout = 30000): Promise<void> {
+async function waitForUrl(url: string, timeout = 30000): Promise<void> {
   await waitUntil(
     async () => {
       try {
-        const response = await fetch(`http://localhost:${port}/`);
+        await fetch(url);
         return true;
       } catch {
         return false;
       }
     },
-    { timeout, interval: 500, message: `Port ${port} not ready` },
+    { timeout, interval: 500, message: `${url} not ready` },
   );
 }
 
@@ -64,6 +65,7 @@ describe('Platform Full Transfer Flow E2E', () => {
   let paymentsProc: ChildProcess;
   let gatewayProc: ChildProcess;
   let dataSource: DataSource;
+  let gatewayUrl: string;
 
   beforeAll(async () => {
     config = await startTestEnvironment();
@@ -82,6 +84,12 @@ describe('Platform Full Transfer Flow E2E', () => {
     await dataSource.initialize();
 
     await truncateAllPublicTables(dataSource);
+
+    if (config.mode === 'external') {
+      gatewayUrl = `${config.services.gatewayUrl}/graphql`;
+      await waitForUrl(gatewayUrl);
+      return;
+    }
 
     const baseDbEnv = {
       DB_HOST: config.postgres.host,
@@ -102,7 +110,7 @@ describe('Platform Full Transfer Flow E2E', () => {
       JWT_REFRESH_EXPIRES_IN: '7d',
     });
 
-    await waitForPort(30110);
+    await waitForUrl('http://localhost:30110/');
 
     walletProc = spawnService('02-wallet', {
       ...baseDbEnv,
@@ -113,7 +121,7 @@ describe('Platform Full Transfer Flow E2E', () => {
       NODE_ENV: 'test',
     });
 
-    await waitForPort(30220);
+    await waitForUrl('http://localhost:30220/');
 
     paymentsProc = spawnService('03-payments', {
       ...baseDbEnv,
@@ -124,7 +132,7 @@ describe('Platform Full Transfer Flow E2E', () => {
       WALLET_SERVICE_URL: 'http://localhost:30220',
     });
 
-    await waitForPort(30330);
+    await waitForUrl('http://localhost:30330/');
 
     gatewayProc = spawnService('00-gateway', {
       NODE_ENV: 'test',
@@ -138,7 +146,8 @@ describe('Platform Full Transfer Flow E2E', () => {
       RATE_LIMIT_MAX: '1200',
     });
 
-    await waitForPort(30000);
+    gatewayUrl = 'http://localhost:30000/graphql';
+    await waitForUrl(gatewayUrl);
   }, 180000);
 
   afterAll(async () => {
@@ -146,13 +155,12 @@ describe('Platform Full Transfer Flow E2E', () => {
       try { proc.kill('SIGTERM'); } catch {}
     };
 
-    kill(gatewayProc);
-    kill(paymentsProc);
-    kill(walletProc);
-    kill(authProc);
+    if (gatewayProc) kill(gatewayProc);
+    if (paymentsProc) kill(paymentsProc);
+    if (walletProc) kill(walletProc);
+    if (authProc) kill(authProc);
 
     if (dataSource?.isInitialized) await dataSource.destroy();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {
@@ -160,8 +168,6 @@ describe('Platform Full Transfer Flow E2E', () => {
   });
 
   it('should execute full register → login → transfer → verify flow', async () => {
-    const gatewayUrl = 'http://localhost:30000/graphql';
-
     const aliceEmail = `alice-platform-${Date.now()}@test.com`;
     const bobEmail = `bob-platform-${Date.now()}@test.com`;
 
