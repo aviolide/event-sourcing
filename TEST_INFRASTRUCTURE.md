@@ -72,6 +72,10 @@ test/
 ### 1. Install dependencies (root)
 
 ```bash
+# Start stage infra/services manually before e2e
+pnpm compose:stage:infra
+pnpm compose:stage:services
+
 npm install
 ```
 
@@ -121,33 +125,25 @@ npm run test:e2e           # E2E tests (if available)
 
 ## Core Components
 
-### 1. stage infrastructure
+### 1. Stage infrastructure
 
-Automatically spins up isolated PostgreSQL and Kafka containers for each test suite.
+Connects tests to manually running PostgreSQL, Kafka, and microservices.
 
 **Files:**
-- `test/shared/containers/test-environment.ts` - PostgreSQL container management
-- `test/shared/containers/test-environment.ts` - Kafka container management
-- `test/shared/containers/test-environment.ts` - Orchestrates both containers
+- `test/shared/containers/test-environment.ts` - Validates DB/Kafka/service connectivity
 
 **Usage:**
 
 ```typescript
-import { startTestEnvironment } from '../shared/containers/test-environment';
+import { getConfig, startTestEnvironment } from '../shared/containers/test-environment';
 
 describe('My Test Suite', () => {
   beforeAll(async () => {
-    const env = startTestEnvironment.getInstance();
-    await env.start();
-  });
-
-  afterAll(async () => {
-    const env = startTestEnvironment.getInstance();
-    await env.stop();
+    await startTestEnvironment(['auth']);
   });
 
   it('should access PostgreSQL', () => {
-    const config = env.getPostgresConfig();
+    const config = getConfig().postgres;
     expect(config.url).toBeTruthy();
   });
 });
@@ -295,12 +291,11 @@ describe('AuthRepository Integration', () => {
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    const env = startTestEnvironment.getInstance();
-    await env.start();
+    const env = await startTestEnvironment();
 
     dataSource = new DataSource({
       type: 'postgres',
-      url: env.getPostgresConfig().url,
+      url: env.postgres.url,
       entities: [UserEntity],
       synchronize: true,
     });
@@ -310,7 +305,6 @@ describe('AuthRepository Integration', () => {
 
   afterAll(async () => {
     await dataSource.destroy();
-    await startTestEnvironment.getInstance().stop();
   });
 
   it('should save and retrieve user from database', async () => {
@@ -371,7 +365,7 @@ Provides automatic setup/teardown of test environment:
 import { BaseTest } from '../shared/base-test';
 
 describe('MyService Integration', () => {
-  // Extend BaseTest for automatic container lifecycle management
+  // Extend BaseTest for automatic connection lifecycle management
   class MyTest extends BaseTest {
     async beforeEach(): Promise<void> {
       await super.beforeEach();
@@ -419,7 +413,7 @@ Each service has `jest.config.js`:
 
 Each test should be independent:
 - Clean database before each test
-- Use fresh containers for integration tests
+- Use isolated stage infrastructure for integration tests
 - Mock external services
 
 ### 2. Naming
@@ -451,8 +445,7 @@ Keep tests fast:
 # Verify Docker is running
 docker --version
 
-# Check container logs
-docker logs yupi-postgres
+# Check manually running service logs in your stage environment
 docker logs yupi-kafka
 ```
 
@@ -529,7 +522,7 @@ jobs:
 ## Next Steps
 
 1. **Phase 3**: Implement unit tests for each service
-2. **Phase 4**: Add integration tests with real containers
+2. **Phase 4**: Add integration tests with real stage infrastructure
 3. **Phase 5**: Create E2E workflow tests
 4. **Phase 6**: Add contract/Pact tests
 5. **Phase 7**: Implement chaos and performance tests

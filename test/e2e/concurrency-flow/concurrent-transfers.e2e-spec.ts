@@ -1,67 +1,44 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import {
   assertNoNegativeBalances,
   assertTotalMoneyConserved,
 } from '../../shared/invariants';
 import {
   startTestEnvironment,
-  getConfig,
 } from '../../shared/containers/test-environment';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
+import { postJson } from '../../shared/http-e2e.helper';
 
 describe('Concurrent Transfers Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
+  let walletUrl: string;
   let senderId: string;
   let receiverId: string;
   let idSequence = 1;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment();
+    const config = await startTestEnvironment(['wallet']);
+    walletUrl = config.services.walletUrl;
 
-    Object.assign(process.env, {
-      PORT: '3022',
-      SERVICE_NAME: 'wallet-concurrency-test',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'wallet-conc-test-client',
-      KAFKA_GROUP_ID: 'wallet-conc-test-group',
-      NODE_ENV: 'test',
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
-
-    const { AppModule } = await import('../../../02-wallet/src/app.module');
-
-    app = await createTestApp({
-      imports: [AppModule],
-      connectMicroservice: {
-        broker: config.kafka.broker,
-        groupId: 'wallet-conc-test-group',
-        clientId: 'wallet-conc-test-client',
-      },
-    });
-
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
+    await truncateAllPublicTables(dataSource);
 
     senderId = `55555555-5555-4555-8555-${String(idSequence).padStart(12, '5')}`;
     receiverId = `66666666-6666-4666-8666-${String(idSequence).padStart(12, '6')}`;
@@ -82,14 +59,12 @@ describe('Concurrent Transfers Flow E2E', () => {
     const concurrentRequests = 10;
 
     const promises = Array.from({ length: concurrentRequests }, () =>
-      request(app.getHttpServer())
-        .post('/wallets/transfer')
-        .send({
-          fromUserId: senderId,
-          toUserId: receiverId,
-          amount: transferAmount,
-          currency: 'PEN',
-        })
+      postJson(`${walletUrl}/wallets/transfer`, {
+        fromUserId: senderId,
+        toUserId: receiverId,
+        amount: transferAmount,
+        currency: 'PEN',
+      })
         .then((res) => ({ status: res.status, body: res.body }))
         .catch(() => ({ status: 500, body: null })),
     );
@@ -129,14 +104,12 @@ describe('Concurrent Transfers Flow E2E', () => {
     );
 
     const promises = Array.from({ length: 5 }, () =>
-      request(app.getHttpServer())
-        .post('/wallets/transfer')
-        .send({
-          fromUserId: senderId,
-          toUserId: receiverId,
-          amount: 150,
-          currency: 'PEN',
-        })
+      postJson(`${walletUrl}/wallets/transfer`, {
+        fromUserId: senderId,
+        toUserId: receiverId,
+        amount: 150,
+        currency: 'PEN',
+      })
         .then((res) => ({ status: res.status }))
         .catch(() => ({ status: 500 })),
     );

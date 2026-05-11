@@ -4,7 +4,7 @@ This guide shows how to write tests that write to real databases and clean up au
 
 ## Key Principles
 
-1. **Real Database**: Tests connect to PostgreSQL/Kafka through docker-compose stage infra or external env vars
+1. **Real Database**: Tests connect to manually running PostgreSQL/Kafka through env vars
 2. **Automatic Cleanup**: `BaseTest` automatically clears the database before and after each test
 3. **Test Isolation**: Each test starts with a clean database (zero data pollution)
 4. **Transactions**: Optional transactional execution for advanced scenarios
@@ -47,7 +47,7 @@ describe('My Integration Test', () => {
 
   beforeEach(async () => {
     testCase = new MyTest();
-    await testCase.beforeEach();  // Starts containers, clears database
+    await testCase.beforeEach();  // Connects to DB and clears database
   });
 
   afterEach(async () => {
@@ -55,7 +55,7 @@ describe('My Integration Test', () => {
   });
 
   afterAll(async () => {
-    await MyTest.afterAll();      // Stops containers
+    await MyTest.afterAll();      // Closes database connections
   });
 });
 ```
@@ -104,7 +104,7 @@ it('should query data from database', async () => {
 Each test automatically:
 
 1. **Before each test (`beforeEach`)**:
-   - Starts PostgreSQL container (if not running)
+   - Connects to manually running PostgreSQL
    - Initializes DatabaseSource
    - **Clears all tables** for clean state
 
@@ -113,9 +113,8 @@ Each test automatically:
    - Closes NestJS app (if open)
 
 3. **After all tests (`afterAll`)**:
-   - Stops PostgreSQL container
-   - Stops Kafka container
-   - Releases all resources
+   - Closes database connections
+   - Releases all test resources
 
 ## Using Seeders
 

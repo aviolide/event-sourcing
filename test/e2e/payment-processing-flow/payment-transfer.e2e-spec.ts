@@ -1,72 +1,49 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import request from 'supertest';
 
-import { createTestApp } from '../../shared/app.factory';
-import { truncateAll } from '../../shared/db.helper';
+import { truncateAllPublicTables } from '../../shared/db.helper';
 import { createTestJwt } from '../../shared/jwt.helper';
-import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import {
   startTestEnvironment,
   getConfig,
 } from '../../shared/containers/test-environment';
-import { HttpServiceMock } from '../../shared/mocks/http-service.mock';
-import { UserBuilder } from '../../shared/builders/user.builder';
-
-import { HttpService } from '../../../03-payments/node_modules/@nestjs/axios';
+import { postJson } from '../../shared/http-e2e.helper';
 
 const JWT_SECRET = 'test-jwt-secret-that-is-at-least-32-characters-long!!';
 
+interface PaymentResponseBody {
+  id: string;
+  status: string;
+  fromUserId: string;
+  toUserId: string;
+}
+
 describe('Payment Processing Flow E2E', () => {
-  let app: INestApplication;
   let dataSource: DataSource;
-  let httpMock: HttpServiceMock;
   let config: ReturnType<typeof getConfig>;
+  let paymentsUrl: string;
 
   beforeAll(async () => {
-    config = await startTestEnvironment();
+    config = await startTestEnvironment(['wallet', 'payments']);
+    paymentsUrl = config.services.paymentsUrl;
 
-    Object.assign(process.env, {
-      PORT: '3030',
-      DB_HOST: config.postgres.host,
-      DB_PORT: String(config.postgres.port),
-      DB_NAME: config.postgres.database,
-      DB_USERNAME: config.postgres.username,
-      DB_PASSWORD: config.postgres.password,
-      KAFKA_BROKER: config.kafka.broker,
-      KAFKA_CLIENT_ID: 'payments-test-client',
-      KAFKA_GROUP_ID: 'payments-test-group',
-      JWT_SECRET: JWT_SECRET,
-      WALLET_SERVICE_URL: config.services.walletUrl,
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: config.postgres.host,
+      port: config.postgres.port,
+      database: config.postgres.database,
+      username: config.postgres.username,
+      password: config.postgres.password,
     });
-
-    httpMock = new HttpServiceMock();
-    await ensureKafkaTopics(config.kafka.broker, ['wallet.transfer.processed']);
-
-    const { AppModule } = await import('../../../03-payments/src/app.module');
-
-    app = await createTestApp({
-      imports: [AppModule],
-      overrides: [{ provide: HttpService, useValue: httpMock }],
-      connectMicroservice: {
-        broker: config.kafka.broker,
-        groupId: 'payments-test-group',
-        clientId: 'payments-test-client',
-      },
-    });
-
-    dataSource = app.get(DataSource);
+    await dataSource.initialize();
   }, 120000);
 
   afterAll(async () => {
-    if (app) await app.close();
-    await disconnectKafka();
+    if (dataSource?.isInitialized) await dataSource.destroy();
   }, 60000);
 
   beforeEach(async () => {
-    await truncateAll(dataSource);
-    httpMock.setPostResponse({});
+    await truncateAllPublicTables(dataSource);
   });
 
   it('should create payment when wallet transfer succeeds', async () => {
@@ -74,17 +51,21 @@ describe('Payment Processing Flow E2E', () => {
     const toUserId = '88888888-8888-4888-8888-888888888888';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer@test.com' });
 
-    httpMock.setPostResponse({ from: { balance: '900' }, to: { balance: '100' } });
+    await dataSource.query(
+      `INSERT INTO wallets ("userId", balance, currency) VALUES ($1, $2, $3), ($4, $5, $6)`,
+      [userId, '1000.00', 'PEN', toUserId, '0.00', 'PEN'],
+    );
 
-    const response = await request(app.getHttpServer())
-      .post('/payments/transfer')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
+    const response = await postJson<PaymentResponseBody>(
+      `${paymentsUrl}/payments/transfer`,
+      {
         toUserId,
         amount: 100,
         currency: 'PEN',
         description: 'Test payment',
-      });
+      },
+      token,
+    );
 
     expect(response.status).toBe(201);
     expect(response.body.status).toBe('COMPLETED');
@@ -105,19 +86,20 @@ describe('Payment Processing Flow E2E', () => {
     const toUserId = '88888888-8888-4888-8888-888888888889';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer2@test.com' });
 
-    httpMock.setPostError({
-      response: { data: { message: 'Insufficient funds' } },
-      message: 'Request failed with status code 400',
-    });
+    await dataSource.query(
+      `INSERT INTO wallets ("userId", balance, currency) VALUES ($1, $2, $3), ($4, $5, $6)`,
+      [userId, '100.00', 'PEN', toUserId, '0.00', 'PEN'],
+    );
 
-    const response = await request(app.getHttpServer())
-      .post('/payments/transfer')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
+    const response = await postJson(
+      `${paymentsUrl}/payments/transfer`,
+      {
         toUserId,
         amount: 9999,
         currency: 'PEN',
-      });
+      },
+      token,
+    );
 
     expect(response.status).toBe(500);
 
@@ -130,13 +112,11 @@ describe('Payment Processing Flow E2E', () => {
   });
 
   it('should reject unauthenticated payment request', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/payments/transfer')
-      .send({
-        toUserId: '88888888-8888-4888-8888-888888888880',
-        amount: 100,
-        currency: 'PEN',
-      });
+    const response = await postJson(`${paymentsUrl}/payments/transfer`, {
+      toUserId: '88888888-8888-4888-8888-888888888880',
+      amount: 100,
+      currency: 'PEN',
+    });
 
     expect(response.status).toBe(401);
   });
@@ -145,12 +125,13 @@ describe('Payment Processing Flow E2E', () => {
     const userId = '77777777-7777-4777-8777-777777777779';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer3@test.com' });
 
-    const response = await request(app.getHttpServer())
-      .post('/payments/transfer')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
+    const response = await postJson(
+      `${paymentsUrl}/payments/transfer`,
+      {
         amount: -10,
-      });
+      },
+      token,
+    );
 
     expect(response.status).toBe(400);
   });

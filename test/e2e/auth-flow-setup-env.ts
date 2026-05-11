@@ -8,8 +8,8 @@
 // seed the auth service's expected configuration.
 //
 // The placeholder Postgres/Kafka values below only exist so Zod validation
-// passes when AppModule is first imported. Specs override them with the active
-// docker-compose or external infra endpoints before the Nest app boots.
+// passes when AppModule is first imported. E2E specs connect to manually
+// running infrastructure through DB_*/KAFKA_* env vars.
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'test';
 process.env.PORT = process.env.PORT ?? '3010';
 process.env.DB_HOST = process.env.DB_HOST ?? 'localhost';

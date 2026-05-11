@@ -13,7 +13,7 @@ export abstract class BaseTest {
       this.dataSource = await getSharedDataSource(this.getEntities());
     } catch (error: any) {
       throw new Error(
-        `Failed to connect to PostgreSQL. Ensure docker-compose stage infra or external DB env vars are available. Original error: ${error.message}`,
+        `Failed to connect to PostgreSQL. Ensure manually running DB env vars are available. Original error: ${error.message}`,
       );
     }
   }
