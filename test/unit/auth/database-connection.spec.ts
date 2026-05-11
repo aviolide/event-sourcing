@@ -1,7 +1,7 @@
 import { loadStageEnv } from '../../shared/test-env';
 
 describe('Stage Environment', () => {
-  it('should load .env.stage configuration', () => {
+  it('should load stage infrastructure env configuration', () => {
     const env = loadStageEnv();
     expect(env).toHaveProperty('db');
     expect(env.db).toHaveProperty('host');

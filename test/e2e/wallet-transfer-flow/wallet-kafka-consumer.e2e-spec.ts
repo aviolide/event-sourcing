@@ -12,7 +12,10 @@ import {
   ensureKafkaTopics,
 } from '../../shared/kafka.helper';
 import { waitUntil } from '../../shared/wait-until';
-import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
+import {
+  startTestEnvironment,
+  getConfig,
+} from '../../shared/containers/test-environment';
 
 describe('Wallet Kafka Consumer Flow E2E', () => {
   let app: INestApplication;
@@ -58,7 +61,6 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
   afterAll(async () => {
     if (app) await app.close();
     await disconnectKafka();
-    await stopTestEnvironment();
   }, 60000);
 
   beforeEach(async () => {
@@ -70,12 +72,10 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
     userSequence += 1;
 
     await publishEvent('user.created', userId, {
-      data: {
       id: userId,
       email: 'kafka-user@test.com',
       phone: '+1111111111',
       fullName: 'Kafka User',
-      },
     });
 
     await waitUntil(
@@ -103,12 +103,10 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
     userSequence += 1;
 
     await publishEvent('user.created', userId, {
-      data: {
       id: userId,
       email: 'dup-user@test.com',
       phone: '+2222222222',
       fullName: 'Dup User',
-      },
     });
 
     await waitUntil(
@@ -123,12 +121,10 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
     );
 
     await publishEvent('user.created', userId, {
-      data: {
       id: userId,
       email: 'dup-user@test.com',
       phone: '+2222222222',
       fullName: 'Dup User',
-      },
     });
 
     await waitUntil(
