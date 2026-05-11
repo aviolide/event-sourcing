@@ -7,15 +7,14 @@ import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { assertNoNegativeBalances, assertTotalMoneyConserved } from '../../shared/invariants';
 import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
-import { disconnectKafka } from '../../shared/kafka.helper';
-
-import { AppModule } from '../../../02-wallet/src/app.module';
+import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 
 describe('Wallet Transfer Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let senderId: string;
   let receiverId: string;
+  let idSequence = 1;
 
   beforeAll(async () => {
     const config = await startTestEnvironment();
@@ -33,6 +32,10 @@ describe('Wallet Transfer Flow E2E', () => {
       KAFKA_GROUP_ID: 'wallet-test-group',
       NODE_ENV: 'test',
     });
+
+    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
+
+    const { AppModule } = await import('../../../02-wallet/src/app.module');
 
     app = await createTestApp({
       imports: [AppModule],
@@ -55,8 +58,9 @@ describe('Wallet Transfer Flow E2E', () => {
   beforeEach(async () => {
     await truncateAll(dataSource);
 
-    senderId = 'a1111111-1111-1111-1111-111111111111';
-    receiverId = 'b2222222-2222-2222-2222-222222222222';
+    senderId = `11111111-1111-4111-8111-${String(idSequence).padStart(12, '1')}`;
+    receiverId = `22222222-2222-4222-8222-${String(idSequence).padStart(12, '2')}`;
+    idSequence += 1;
 
     await dataSource.query(
       `INSERT INTO wallets ("userId", balance, currency) VALUES ($1, $2, $3)`,
@@ -126,7 +130,7 @@ describe('Wallet Transfer Flow E2E', () => {
       .post('/wallets/transfer')
       .send({
         fromUserId: senderId,
-        toUserId: '99999999-9999-9999-9999-999999999999',
+        toUserId: '99999999-9999-4999-9999-999999999999',
         amount: 100,
         currency: 'PEN',
       });

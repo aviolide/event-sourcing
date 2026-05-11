@@ -14,15 +14,14 @@ import {
   stopTestEnvironment,
   getConfig,
 } from '../../shared/containers/test-environment';
-import { disconnectKafka } from '../../shared/kafka.helper';
-
-import { AppModule } from '../../../02-wallet/src/app.module';
+import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 
 describe('Concurrent Transfers Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let senderId: string;
   let receiverId: string;
+  let idSequence = 1;
 
   beforeAll(async () => {
     const config = await startTestEnvironment();
@@ -40,6 +39,10 @@ describe('Concurrent Transfers Flow E2E', () => {
       KAFKA_GROUP_ID: 'wallet-conc-test-group',
       NODE_ENV: 'test',
     });
+
+    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
+
+    const { AppModule } = await import('../../../02-wallet/src/app.module');
 
     app = await createTestApp({
       imports: [AppModule],
@@ -62,8 +65,9 @@ describe('Concurrent Transfers Flow E2E', () => {
   beforeEach(async () => {
     await truncateAll(dataSource);
 
-    senderId = 'e5555555-5555-5555-5555-555555555555';
-    receiverId = 'f6666666-6666-6666-6666-666666666666';
+    senderId = `55555555-5555-4555-8555-${String(idSequence).padStart(12, '5')}`;
+    receiverId = `66666666-6666-4666-8666-${String(idSequence).padStart(12, '6')}`;
+    idSequence += 1;
 
     await dataSource.query(
       `INSERT INTO wallets ("userId", balance, currency) VALUES ($1, $2, $3)`,

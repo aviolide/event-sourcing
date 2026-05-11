@@ -6,12 +6,11 @@ import request from 'supertest';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { createTestJwt } from '../../shared/jwt.helper';
-import { waitForKafkaMessage, disconnectKafka } from '../../shared/kafka.helper';
+import { disconnectKafka } from '../../shared/kafka.helper';
 import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
 import { HttpServiceMock } from '../../shared/mocks/http-service.mock';
 import { UserBuilder } from '../../shared/builders/user.builder';
 
-import { AppModule } from '../../../03-payments/src/app.module';
 import { HttpService } from '../../../03-payments/node_modules/@nestjs/axios';
 
 const JWT_SECRET = 'test-jwt-secret-that-is-at-least-32-characters-long!!';
@@ -41,6 +40,8 @@ describe('Payment Processing Flow E2E', () => {
 
     httpMock = new HttpServiceMock();
 
+    const { AppModule } = await import('../../../03-payments/src/app.module');
+
     app = await createTestApp({
       imports: [AppModule],
       overrides: [{ provide: HttpService, useValue: httpMock }],
@@ -66,8 +67,8 @@ describe('Payment Processing Flow E2E', () => {
   });
 
   it('should create payment when wallet transfer succeeds', async () => {
-    const userId = 'p7777777-7777-7777-7777-777777777777';
-    const toUserId = 'q8888888-8888-8888-8888-888888888888';
+    const userId = '77777777-7777-4777-8777-777777777777';
+    const toUserId = '88888888-8888-4888-8888-888888888888';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer@test.com' });
 
     httpMock.setPostResponse({ from: { balance: '900' }, to: { balance: '100' } });
@@ -97,8 +98,8 @@ describe('Payment Processing Flow E2E', () => {
   });
 
   it('should mark payment as FAILED when wallet transfer fails', async () => {
-    const userId = 'p7777777-7777-7777-7777-777777777778';
-    const toUserId = 'q8888888-8888-8888-8888-888888888889';
+    const userId = '77777777-7777-4777-8777-777777777778';
+    const toUserId = '88888888-8888-4888-8888-888888888889';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer2@test.com' });
 
     httpMock.setPostError({
@@ -129,7 +130,7 @@ describe('Payment Processing Flow E2E', () => {
     const response = await request(app.getHttpServer())
       .post('/payments/transfer')
       .send({
-        toUserId: 'q8888888-8888-8888-8888-888888888880',
+        toUserId: '88888888-8888-4888-8888-888888888880',
         amount: 100,
         currency: 'PEN',
       });
@@ -138,7 +139,7 @@ describe('Payment Processing Flow E2E', () => {
   });
 
   it('should reject invalid payment body', async () => {
-    const userId = 'p7777777-7777-7777-7777-777777777779';
+    const userId = '77777777-7777-4777-8777-777777777779';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer3@test.com' });
 
     const response = await request(app.getHttpServer())

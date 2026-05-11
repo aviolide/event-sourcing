@@ -5,16 +5,20 @@ import { DataSource } from 'typeorm';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { assertWalletCount } from '../../shared/invariants';
-import { createKafkaProducer, publishEvent, disconnectKafka } from '../../shared/kafka.helper';
+import {
+  createKafkaProducer,
+  publishEvent,
+  disconnectKafka,
+  ensureKafkaTopics,
+} from '../../shared/kafka.helper';
 import { waitUntil } from '../../shared/wait-until';
 import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
-
-import { AppModule } from '../../../02-wallet/src/app.module';
 
 describe('Wallet Kafka Consumer Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let config: ReturnType<typeof getConfig>;
+  let userSequence = 1;
 
   beforeAll(async () => {
     config = await startTestEnvironment();
@@ -32,6 +36,10 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
       KAFKA_GROUP_ID: 'wallet-kafka-test-group',
       NODE_ENV: 'test',
     });
+
+    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
+
+    const { AppModule } = await import('../../../02-wallet/src/app.module');
 
     app = await createTestApp({
       imports: [AppModule],
@@ -58,13 +66,16 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
   });
 
   it('should create wallet when user.created event is received', async () => {
-    const userId = 'c3333333-3333-3333-3333-333333333333';
+    const userId = `33333333-3333-4333-8333-${String(userSequence).padStart(12, '3')}`;
+    userSequence += 1;
 
     await publishEvent('user.created', userId, {
+      data: {
       id: userId,
       email: 'kafka-user@test.com',
       phone: '+1111111111',
       fullName: 'Kafka User',
+      },
     });
 
     await waitUntil(
@@ -88,13 +99,16 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
   });
 
   it('should be idempotent when receiving duplicate user.created event', async () => {
-    const userId = 'd4444444-4444-4444-4444-444444444444';
+    const userId = `44444444-4444-4444-8444-${String(userSequence).padStart(12, '4')}`;
+    userSequence += 1;
 
     await publishEvent('user.created', userId, {
+      data: {
       id: userId,
       email: 'dup-user@test.com',
       phone: '+2222222222',
       fullName: 'Dup User',
+      },
     });
 
     await waitUntil(
@@ -109,15 +123,23 @@ describe('Wallet Kafka Consumer Flow E2E', () => {
     );
 
     await publishEvent('user.created', userId, {
+      data: {
       id: userId,
       email: 'dup-user@test.com',
       phone: '+2222222222',
       fullName: 'Dup User',
+      },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    await assertWalletCount(dataSource, 1);
+    await waitUntil(
+      async () => {
+        const result = await dataSource.query(
+          `SELECT COUNT(*) as count FROM wallets`,
+        );
+        return parseInt(result[0].count, 10) === 1;
+      },
+      { timeout: 5000, message: 'Duplicate user.created changed wallet count' },
+    );
 
     const rows = await dataSource.query(
       `SELECT * FROM wallets WHERE "userId" = $1`,

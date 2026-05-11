@@ -6,7 +6,7 @@ import request from 'supertest';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { assertUniqueEmails } from '../../shared/invariants';
-import { disconnectKafka } from '../../shared/kafka.helper';
+import { disconnectKafka, ensureKafkaTopics } from '../../shared/kafka.helper';
 import {
   startTestEnvironment,
   stopTestEnvironment,
@@ -36,6 +36,8 @@ describe('User Registration Flow E2E', () => {
       JWT_REFRESH_SECRET: 'test-refresh-secret-that-is-at-least-32-chars!!',
       JWT_REFRESH_EXPIRES_IN: '7d',
     });
+
+    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
 
     const { AppModule } = await import('../../../01-auth/src/app.module');
     app = await createTestApp({ imports: [AppModule] });

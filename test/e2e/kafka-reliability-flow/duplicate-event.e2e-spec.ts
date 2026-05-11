@@ -5,16 +5,20 @@ import { DataSource } from 'typeorm';
 import { createTestApp } from '../../shared/app.factory';
 import { truncateAll } from '../../shared/db.helper';
 import { assertWalletCount } from '../../shared/invariants';
-import { createKafkaProducer, publishEvent, disconnectKafka } from '../../shared/kafka.helper';
+import {
+  createKafkaProducer,
+  publishEvent,
+  disconnectKafka,
+  ensureKafkaTopics,
+} from '../../shared/kafka.helper';
 import { waitUntil } from '../../shared/wait-until';
 import { startTestEnvironment, stopTestEnvironment, getConfig } from '../../shared/containers/test-environment';
-
-import { AppModule } from '../../../02-wallet/src/app.module';
 
 describe('Kafka Reliability Flow E2E', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let config: ReturnType<typeof getConfig>;
+  let userSequence = 1;
 
   beforeAll(async () => {
     config = await startTestEnvironment();
@@ -32,6 +36,10 @@ describe('Kafka Reliability Flow E2E', () => {
       KAFKA_GROUP_ID: 'wallet-reliability-test-group',
       NODE_ENV: 'test',
     });
+
+    await ensureKafkaTopics(config.kafka.broker, ['user.created']);
+
+    const { AppModule } = await import('../../../02-wallet/src/app.module');
 
     app = await createTestApp({
       imports: [AppModule],
@@ -58,13 +66,16 @@ describe('Kafka Reliability Flow E2E', () => {
   });
 
   it('should handle duplicate user.created events idempotently', async () => {
-    const userId = 'r1111111-1111-1111-1111-111111111111';
+    const userId = `11111111-1111-4111-8111-${String(userSequence).padStart(12, '1')}`;
+    userSequence += 1;
 
     await publishEvent('user.created', userId, {
+      data: {
       id: userId,
       email: 'dup1@test.com',
       phone: '+1111111111',
       fullName: 'Dup Test 1',
+      },
     });
 
     await waitUntil(
@@ -79,38 +90,52 @@ describe('Kafka Reliability Flow E2E', () => {
     );
 
     await publishEvent('user.created', userId, {
+      data: {
       id: userId,
       email: 'dup1@test.com',
       phone: '+1111111111',
       fullName: 'Dup Test 1',
+      },
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const rows = await dataSource.query(
-      `SELECT * FROM wallets WHERE "userId" = $1`,
-      [userId],
+    let rows: Array<{ balance: string }> = [];
+    await waitUntil(
+      async () => {
+        rows = await dataSource.query(
+          `SELECT * FROM wallets WHERE "userId" = $1`,
+          [userId],
+        );
+        return rows.length === 1;
+      },
+      { timeout: 5000, message: 'Duplicate user.created created extra wallets' },
     );
+
     expect(rows).toHaveLength(1);
     expect(parseFloat(rows[0].balance)).toBe(0);
   });
 
   it('should process events for different users independently', async () => {
-    const user1Id = 'r2222222-2222-2222-2222-222222222222';
-    const user2Id = 'r3333333-3333-3333-3333-333333333333';
+    const user1Id = `22222222-2222-4222-8222-${String(userSequence).padStart(12, '2')}`;
+    userSequence += 1;
+    const user2Id = `33333333-3333-4333-8333-${String(userSequence).padStart(12, '3')}`;
+    userSequence += 1;
 
     await publishEvent('user.created', user1Id, {
+      data: {
       id: user1Id,
       email: 'indep1@test.com',
       phone: '+1222222222',
       fullName: 'Indep Test 1',
+      },
     });
 
     await publishEvent('user.created', user2Id, {
+      data: {
       id: user2Id,
       email: 'indep2@test.com',
       phone: '+1333333333',
       fullName: 'Indep Test 2',
+      },
     });
 
     await waitUntil(
@@ -124,6 +149,10 @@ describe('Kafka Reliability Flow E2E', () => {
       { timeout: 20000, message: 'Both wallets not created' },
     );
 
-    await assertWalletCount(dataSource, 2);
+    const rows = await dataSource.query(
+      `SELECT * FROM wallets WHERE "userId" IN ($1, $2)`,
+      [user1Id, user2Id],
+    );
+    expect(rows).toHaveLength(2);
   });
 });
