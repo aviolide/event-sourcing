@@ -1,6 +1,8 @@
 import { Kafka, Producer, Consumer } from 'kafkajs';
+import { waitUntil } from './wait-until';
 
 let producer: Producer | null = null;
+let createdTopics: string[] = [];
 
 export async function createKafkaProducer(broker: string): Promise<Producer> {
   const kafka = new Kafka({
@@ -11,6 +13,42 @@ export async function createKafkaProducer(broker: string): Promise<Producer> {
   producer = kafka.producer();
   await producer.connect();
   return producer;
+}
+
+export async function ensureKafkaTopics(
+  broker: string,
+  topics: string[],
+): Promise<void> {
+  const kafka = new Kafka({
+    clientId: `test-topic-init-${Date.now()}`,
+    brokers: [broker],
+  });
+  const initProducer = kafka.producer();
+
+  await initProducer.connect();
+  try {
+    for (const topic of topics) {
+      if (createdTopics.includes(topic)) continue;
+
+      await waitUntil(
+        async () => {
+          const metadata = await initProducer.send({
+            topic,
+            messages: [{ key: '__topic_init__', value: '{}' }],
+          });
+          return metadata.length > 0;
+        },
+        {
+          timeout: 10000,
+          interval: 500,
+          message: `Kafka topic "${topic}" not ready`,
+        },
+      );
+      createdTopics.push(topic);
+    }
+  } finally {
+    await initProducer.disconnect();
+  }
 }
 
 export async function publishEvent(
@@ -78,4 +116,5 @@ export async function disconnectKafka(): Promise<void> {
     await producer.disconnect();
     producer = null;
   }
+  createdTopics = [];
 }
