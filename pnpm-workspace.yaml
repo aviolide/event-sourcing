@@ -3,3 +3,4 @@ packages:
   - '01-auth'
   - '02-wallet'
   - '03-payments'
+  - '04-logging'
