@@ -31,14 +31,14 @@ Client (Web / Mobile)
           │ Event Bus  │              │
           └─────┬──────┘              │
                 │                     │
-   ┌────────────┼────────────┐        │
-   ▼            ▼            ▼        │
-┌──────┐  ┌──────────┐  ┌────────┐   │
-│04-log│  │04-logging │  │02-wal  │   │
-│ :3050│  │  :3040    │  │consumer│   │
-└──┬───┘  └────┬─────┘  └────────┘   │
-   │           │                      │
-   └───────────┴──────────────────────┘
+        ┌───────┴────────┐            │
+        ▼                ▼            │
+  ┌──────────┐     ┌────────┐         │
+  │04-logging│     │02-wal  │         │
+  │  :3040   │     │consumer│         │
+  └────┬─────┘     └────────┘         │
+       │                              │
+       └──────────────────────────────┘
                  ▼
        ┌──────────────────┐
        │   PostgreSQL     │
@@ -54,14 +54,12 @@ Client (Web / Mobile)
 | **01-auth** | 3010 | Identity provider — user registration, login, JWT issuance (access + refresh tokens), password hashing (bcrypt). Emits `user.created` events. |
 | **02-wallet** | 3020 | Financial ledger — manages user wallets and balances. Consumes `user.created` to auto-create wallets. Handles transfers with pessimistic locking. |
 | **03-payments** | 3030 | Transaction processing — creates payments, triggers wallet transfers via Kafka. Consumes `wallet.transfer.processed` to update payment status. Supports refill operations. |
-| **04-log** | 3050 | User activity log — creates per-user log entries on `user.created` events. Maintains user-scoped ledger records. |
 | **04-logging** | 3040 | Append-only event store — consumes **all** Kafka events from every service and persists them to PostgreSQL. Exposes SSE stream + REST API. Includes a live dashboard frontend. |
 
 ### Kafka Event Flow
 
 ```
 01-auth ──► user.created ──────────► 02-wallet (creates wallet)
-                                 ├─► 04-log   (creates user log)
                                  └─► 04-logging (persists event)
 
 03-payments ──► wallet.transfer.requested ──► 02-wallet (executes transfer)
@@ -284,7 +282,6 @@ docker compose -f docker-compose.stage.yaml --profile services up -d --build
 ├── 01-auth/             # Authentication service
 ├── 02-wallet/           # Wallet / ledger service
 ├── 03-payments/         # Payment processing service
-├── 04-log/              # User activity log service
 ├── 04-logging/          # Append-only event store + SSE dashboard
 ├── test/                # Monorepo test suite
 │   ├── e2e/             # End-to-end test flows
@@ -307,9 +304,9 @@ Each service validates its environment with Zod at startup. See `src/config/env.
 | Variable | Services | Description |
 |----------|----------|-------------|
 | `PORT` | All | HTTP port |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | auth, wallet, payments, log, logging | PostgreSQL connection |
-| `KAFKA_BROKER` | wallet, payments, log, logging | Kafka broker address |
-| `KAFKA_GROUP_ID` | wallet, payments, log, logging | Kafka consumer group |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | auth, wallet, payments, logging | PostgreSQL connection |
+| `KAFKA_BROKER` | wallet, payments, logging | Kafka broker address |
+| `KAFKA_GROUP_ID` | wallet, payments, logging | Kafka consumer group |
 | `KAFKA_CLIENT_ID` | payments, logging | Kafka client identifier |
 | `JWT_SECRET` | gateway, auth, payments | JWT signing secret (min 32 chars) |
 | `JWT_EXPIRES_IN` | auth | Access token TTL (default: 15m) |
