@@ -1,7 +1,7 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, KafkaContext, Payload } from '@nestjs/microservices';
 import { EventLogApplication } from '../../application/event-log.application';
-import { Topics, ALL_TOPICS } from '@yupi/messaging';
+import { Topics } from '@yupi/messaging';
 
 @Controller()
 export class EventsKafkaConsumer {
@@ -25,12 +25,20 @@ export class EventsKafkaConsumer {
     await this.handleEvent(Topics.EVT_WALLET_CREATED, data, context);
   }
 
-  @EventPattern(Topics.EVT_WALLET_DEBITED)
-  async onWalletDebited(
+  @EventPattern(Topics.EVT_WALLET_RESERVED)
+  async onWalletReserved(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent(Topics.EVT_WALLET_DEBITED, data, context);
+    await this.handleEvent(Topics.EVT_WALLET_RESERVED, data, context);
+  }
+
+  @EventPattern(Topics.EVT_WALLET_RESERVE_FAILED)
+  async onWalletReserveFailed(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() context: KafkaContext,
+  ) {
+    await this.handleEvent(Topics.EVT_WALLET_RESERVE_FAILED, data, context);
   }
 
   @EventPattern(Topics.EVT_WALLET_CREDITED)
@@ -41,12 +49,36 @@ export class EventsKafkaConsumer {
     await this.handleEvent(Topics.EVT_WALLET_CREDITED, data, context);
   }
 
-  @EventPattern(Topics.EVT_PAYMENT_CREATED)
-  async onPaymentCreated(
+  @EventPattern(Topics.EVT_WALLET_CREDIT_FAILED)
+  async onWalletCreditFailed(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent(Topics.EVT_PAYMENT_CREATED, data, context);
+    await this.handleEvent(Topics.EVT_WALLET_CREDIT_FAILED, data, context);
+  }
+
+  @EventPattern(Topics.EVT_WALLET_COMMITTED)
+  async onWalletCommitted(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() context: KafkaContext,
+  ) {
+    await this.handleEvent(Topics.EVT_WALLET_COMMITTED, data, context);
+  }
+
+  @EventPattern(Topics.EVT_WALLET_COMMIT_FAILED)
+  async onWalletCommitFailed(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() context: KafkaContext,
+  ) {
+    await this.handleEvent(Topics.EVT_WALLET_COMMIT_FAILED, data, context);
+  }
+
+  @EventPattern(Topics.EVT_WALLET_RELEASED)
+  async onWalletReleased(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() context: KafkaContext,
+  ) {
+    await this.handleEvent(Topics.EVT_WALLET_RELEASED, data, context);
   }
 
   @EventPattern(Topics.EVT_PAYMENT_COMPLETED)
