@@ -8,6 +8,7 @@ export class Wallet {
   private id: string;
   private userId: string;
   private balance: number;
+  private reserved: number;
   private currency: string;
   private version: number;
 
@@ -15,6 +16,7 @@ export class Wallet {
     this.id = id;
     this.userId = userId;
     this.balance = 0;
+    this.reserved = 0;
     this.currency = currency;
     this.version = 0;
   }
@@ -38,20 +40,35 @@ export class Wallet {
       case 'FundsCredited':
         this.balance += payload.amount as number;
         break;
-      case 'FundsDebited':
+      case 'FundsReserved':
+        this.reserved += payload.amount as number;
+        break;
+      case 'FundsReleased':
+        this.reserved -= payload.amount as number;
+        break;
+      case 'TransferCommitted':
         this.balance -= payload.amount as number;
+        this.reserved -= payload.amount as number;
         break;
       default:
         break;
     }
   }
 
-  canDebit(amount: number): boolean {
-    return this.balance >= amount && amount > 0;
+  canReserve(amount: number): boolean {
+    return this.balance - this.reserved >= amount && amount > 0;
   }
 
   getBalance(): number {
     return this.balance;
+  }
+
+  getReserved(): number {
+    return this.reserved;
+  }
+
+  getAvailable(): number {
+    return this.balance - this.reserved;
   }
 
   getVersion(): number {

@@ -4,21 +4,32 @@ import { BaseException } from '../../../../core/exceptions/base.exception';
 
 export type WalletResult = Promise<Result<Wallet, BaseException>>;
 export type VoidResult = Promise<Result<void, BaseException>>;
-export type WalletTransferResult = Result<{ from: Wallet; to: Wallet }, BaseException>;
 
 export abstract class WalletRepository {
   abstract createForUser(userId: string): WalletResult;
   abstract findByUserId(userId: string): WalletResult;
-  abstract transfer(
-    fromUserId: string,
-    toUserId: string,
+  abstract reserve(
+    userId: string,
     amount: number,
     currency: string,
-  ): Promise<WalletTransferResult>;
+    transferId: string,
+  ): VoidResult;
   abstract credit(
     userId: string,
     amount: number,
     currency: string,
-    reason?: string,
-  ): WalletResult;
+    transferId: string,
+  ): VoidResult;
+  abstract release(
+    userId: string,
+    amount: number,
+    currency: string,
+    transferId: string,
+  ): VoidResult;
+  abstract commit(
+    userId: string,
+    amount: number,
+    currency: string,
+    transferId: string,
+  ): VoidResult;
 }

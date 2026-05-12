@@ -59,8 +59,8 @@ export class WalletCommandConsumer {
     });
   }
 
-  @EventPattern(Topics.CMD_WALLET_TRANSFER)
-  async handleWalletTransfer(
+  @EventPattern(Topics.CMD_WALLET_RESERVE)
+  async handleWalletReserve(
     @Payload() message: any,
     @Ctx() context: KafkaContext,
   ) {
@@ -68,33 +68,35 @@ export class WalletCommandConsumer {
     const payload = envelope.payload;
     const messageId = envelope.messageId || context.getMessage().offset;
 
-    await this.inboxGuard.process(messageId, Topics.CMD_WALLET_TRANSFER, async () => {
+    await this.inboxGuard.process(messageId, Topics.CMD_WALLET_RESERVE, async () => {
       this.logger.log(
-        `Received cmd.wallet.transfer from=${payload.fromUserId} to=${payload.toUserId} amount=${payload.amount}`,
+        `Received cmd.wallet.reserve userId=${payload.userId} amount=${payload.amount} transferId=${payload.transferId}`,
       );
 
-      const result = await this.application.transfer(
-        payload.fromUserId,
-        payload.toUserId,
+      const result = await this.application.reserve(
+        payload.userId,
         payload.amount,
         payload.currency,
+        payload.transferId,
       );
 
       if (result.isErr()) {
         this.logger.error(
-          `Transfer failed: ${result.error.message}`,
+          `Reserve failed: ${result.error.message}`,
           result.error.stack,
         );
 
         await this.kafkaProducer.publish({
-          topic: Topics.EVT_PAYMENT_FAILED,
+          topic: Topics.EVT_WALLET_RESERVE_FAILED,
           payload: {
-            requestId: payload.requestId,
-            reason: result.error.message,
             transferId: payload.transferId,
+            userId: payload.userId,
+            amount: payload.amount,
+            currency: payload.currency,
+            reason: result.error.message,
           },
-          aggregateId: payload.requestId,
-          aggregateType: 'PaymentTransfer',
+          aggregateId: payload.transferId,
+          aggregateType: 'Wallet',
           aggregateVersion: 1,
           correlationId: envelope.correlationId,
           producer: 'wallet-service',
@@ -102,43 +104,134 @@ export class WalletCommandConsumer {
         return;
       }
 
-      const { from, to } = result.value;
-
       await this.kafkaProducer.publish({
-        topic: Topics.EVT_WALLET_DEBITED,
+        topic: Topics.EVT_WALLET_RESERVED,
         payload: {
-          walletId: from.getId(),
-          userId: from.getUserId(),
+          transferId: payload.transferId,
+          userId: payload.userId,
           amount: payload.amount,
           currency: payload.currency,
-          newBalance: from.getBalance(),
         },
-        aggregateId: from.getId(),
+        aggregateId: payload.transferId,
         aggregateType: 'Wallet',
-        aggregateVersion: from.getVersion(),
+        aggregateVersion: 1,
         correlationId: envelope.correlationId,
         producer: 'wallet-service',
       });
+
+      this.logger.log(`Reserve succeeded: transferId=${payload.transferId}`);
+    });
+  }
+
+  @EventPattern(Topics.CMD_WALLET_CREDIT)
+  async handleWalletCredit(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.CMD_WALLET_CREDIT, async () => {
+      this.logger.log(
+        `Received cmd.wallet.credit userId=${payload.userId} amount=${payload.amount} transferId=${payload.transferId}`,
+      );
+
+      const result = await this.application.credit(
+        payload.userId,
+        payload.amount,
+        payload.currency,
+        payload.transferId,
+      );
+
+      if (result.isErr()) {
+        this.logger.error(
+          `Credit failed: ${result.error.message}`,
+          result.error.stack,
+        );
+
+        await this.kafkaProducer.publish({
+          topic: Topics.EVT_WALLET_CREDIT_FAILED,
+          payload: {
+            transferId: payload.transferId,
+            userId: payload.userId,
+            amount: payload.amount,
+            currency: payload.currency,
+            reason: result.error.message,
+          },
+          aggregateId: payload.transferId,
+          aggregateType: 'Wallet',
+          aggregateVersion: 1,
+          correlationId: envelope.correlationId,
+          producer: 'wallet-service',
+        });
+        return;
+      }
 
       await this.kafkaProducer.publish({
         topic: Topics.EVT_WALLET_CREDITED,
         payload: {
-          walletId: to.getId(),
-          userId: to.getUserId(),
+          transferId: payload.transferId,
+          userId: payload.userId,
           amount: payload.amount,
           currency: payload.currency,
-          newBalance: to.getBalance(),
         },
-        aggregateId: to.getId(),
+        aggregateId: payload.transferId,
         aggregateType: 'Wallet',
-        aggregateVersion: to.getVersion(),
+        aggregateVersion: 1,
         correlationId: envelope.correlationId,
         producer: 'wallet-service',
       });
 
+      this.logger.log(`Credit succeeded: transferId=${payload.transferId}`);
+    });
+  }
+
+  @EventPattern(Topics.CMD_WALLET_RELEASE)
+  async handleWalletRelease(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.CMD_WALLET_RELEASE, async () => {
       this.logger.log(
-        `Transfer processed: from=${from.getId()} to=${to.getId()}`,
+        `Received cmd.wallet.release userId=${payload.userId} amount=${payload.amount} transferId=${payload.transferId}`,
       );
+
+      const result = await this.application.release(
+        payload.userId,
+        payload.amount,
+        payload.currency,
+        payload.transferId,
+      );
+
+      if (result.isErr()) {
+        this.logger.error(
+          `Release failed: ${result.error.message}`,
+          result.error.stack,
+        );
+        return;
+      }
+
+      await this.kafkaProducer.publish({
+        topic: Topics.EVT_WALLET_RELEASED,
+        payload: {
+          transferId: payload.transferId,
+          userId: payload.userId,
+          amount: payload.amount,
+          currency: payload.currency,
+        },
+        aggregateId: payload.transferId,
+        aggregateType: 'Wallet',
+        aggregateVersion: 1,
+        correlationId: envelope.correlationId,
+        producer: 'wallet-service',
+      });
+
+      this.logger.log(`Release succeeded: transferId=${payload.transferId}`);
     });
   }
 
@@ -160,7 +253,7 @@ export class WalletCommandConsumer {
         payload.userId,
         payload.amount,
         payload.currency,
-        payload.description,
+        payload.requestId,
       );
 
       if (result.isErr()) {
@@ -168,43 +261,26 @@ export class WalletCommandConsumer {
           `Refill failed: ${result.error.message}`,
           result.error.stack,
         );
-
-        await this.kafkaProducer.publish({
-          topic: Topics.EVT_PAYMENT_FAILED,
-          payload: {
-            requestId: payload.requestId,
-            reason: result.error.message,
-          },
-          aggregateId: payload.requestId,
-          aggregateType: 'WalletRefill',
-          aggregateVersion: 1,
-          correlationId: envelope.correlationId,
-          producer: 'wallet-service',
-        });
         return;
       }
-
-      const wallet = result.value;
 
       await this.kafkaProducer.publish({
         topic: Topics.EVT_WALLET_CREDITED,
         payload: {
-          walletId: wallet.getId(),
-          userId: wallet.getUserId(),
+          walletId: payload.userId,
+          userId: payload.userId,
           amount: payload.amount,
           currency: payload.currency,
-          newBalance: wallet.getBalance(),
+          transferId: payload.requestId,
         },
-        aggregateId: wallet.getId(),
+        aggregateId: payload.requestId,
         aggregateType: 'Wallet',
-        aggregateVersion: wallet.getVersion(),
+        aggregateVersion: 1,
         correlationId: envelope.correlationId,
         producer: 'wallet-service',
       });
 
-      this.logger.log(
-        `Refill processed: walletId=${wallet.getId()} newBalance=${wallet.getBalance()}`,
-      );
+      this.logger.log(`Refill processed: userId=${payload.userId}`);
     });
   }
 }

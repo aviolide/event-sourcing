@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { err, ok } from 'neverthrow';
 
-import { WalletRepository, WalletResult, WalletTransferResult } from '../domain/repositories/wallet.repository';
+import { WalletRepository, WalletResult, VoidResult } from '../domain/repositories/wallet.repository';
 import { Wallet } from '../domain/wallet';
 import { WalletEntity } from './entities/wallet.entity';
 import { WalletLedgerEntry } from './entities/wallet-ledger.entity';
@@ -14,9 +14,7 @@ import {
   WalletSaveDatabaseException,
   WalletNotFoundException,
   WalletInsufficientFundsException,
-  WalletTransferDatabaseException,
 } from '../../../core/exceptions/wallet.exception';
-import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class WalletInfrastructure implements WalletRepository {
@@ -29,7 +27,6 @@ export class WalletInfrastructure implements WalletRepository {
     private readonly snapshotRepo: Repository<WalletSnapshot>,
     @InjectRepository(WalletBalanceView)
     private readonly balanceViewRepo: Repository<WalletBalanceView>,
-    private readonly dataSource: DataSource,
   ) {}
 
   async createForUser(userId: string): WalletResult {
@@ -55,7 +52,7 @@ export class WalletInfrastructure implements WalletRepository {
         version: 1,
       });
 
-      await this.updateBalanceView(saved.id, userId, 0, 'PEN', 1);
+      await this.updateBalanceView(saved.id, userId, 0, 0, 'PEN', 1);
 
       const wallet = Wallet.create(saved.id, userId, 'PEN');
       return ok(wallet);
@@ -78,119 +75,48 @@ export class WalletInfrastructure implements WalletRepository {
     }
   }
 
-  async transfer(
-    fromUserId: string,
-    toUserId: string,
+  async reserve(
+    userId: string,
     amount: number,
     currency: string,
-  ): Promise<WalletTransferResult> {
-    if (fromUserId === toUserId) {
-      return err(
-        new WalletInsufficientFundsException('Cannot transfer to the same user'),
-      );
-    }
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
+    transferId: string,
+  ): VoidResult {
     try {
-      const walletRepo = queryRunner.manager.getRepository(WalletEntity);
+      const entity = await this.repository.findOne({ where: { userId, currency } });
+      if (!entity) {
+        return err(new WalletNotFoundException(userId));
+      }
 
-      const fromEntity = await walletRepo.findOne({
-        where: { userId: fromUserId, currency },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      if (!fromEntity) {
-        throw new WalletNotFoundException(
-          `Wallet not found for userId=${fromUserId} currency=${currency}`,
+      const wallet = await this.rebuildWallet(entity.id, userId);
+      if (!wallet.canReserve(amount)) {
+        return err(
+          new WalletInsufficientFundsException(
+            `Insufficient available funds for userId=${userId}: available=${wallet.getAvailable()}, requested=${amount}`,
+          ),
         );
       }
 
-      const toEntity = await walletRepo.findOne({
-        where: { userId: toUserId, currency },
-        lock: { mode: 'pessimistic_write' },
-      });
+      const version = wallet.getVersion() + 1;
 
-      if (!toEntity) {
-        throw new WalletNotFoundException(
-          `Wallet not found for userId=${toUserId} currency=${currency}`,
-        );
-      }
-
-      const fromWallet = await this.rebuildWallet(
-        fromEntity.id,
-        fromUserId,
-        queryRunner.manager,
-      );
-      const toWallet = await this.rebuildWallet(
-        toEntity.id,
-        toUserId,
-        queryRunner.manager,
-      );
-
-      if (!fromWallet.canDebit(amount)) {
-        throw new WalletInsufficientFundsException(
-          `Insufficient funds in wallet of userId=${fromUserId}`,
-        );
-      }
-
-      const transferId = randomUUID();
-      const fromVersion = fromWallet.getVersion() + 1;
-      const toVersion = toWallet.getVersion() + 1;
-
-      const ledgerRepo = queryRunner.manager.getRepository(WalletLedgerEntry);
-
-      await ledgerRepo.save({
-        walletId: fromEntity.id,
-        eventType: 'FundsDebited',
-        payload: { amount, transferId, reason: 'transfer' },
-        version: fromVersion,
-      });
-
-      await ledgerRepo.save({
-        walletId: toEntity.id,
-        eventType: 'FundsCredited',
-        payload: { amount, transferId, reason: 'transfer' },
-        version: toVersion,
+      await this.ledgerRepo.save({
+        walletId: entity.id,
+        eventType: 'FundsReserved',
+        payload: { amount, transferId, currency },
+        version,
       });
 
       await this.updateBalanceView(
-        fromEntity.id,
-        fromUserId,
-        fromWallet.getBalance() - amount,
+        entity.id,
+        userId,
+        wallet.getBalance(),
+        wallet.getReserved() + amount,
         currency,
-        fromVersion,
-        queryRunner.manager,
-      );
-      await this.updateBalanceView(
-        toEntity.id,
-        toUserId,
-        toWallet.getBalance() + amount,
-        currency,
-        toVersion,
-        queryRunner.manager,
+        version,
       );
 
-      await queryRunner.commitTransaction();
-
-      return ok({ from: fromWallet, to: toWallet });
+      return ok(undefined);
     } catch (error: any) {
-      await queryRunner.rollbackTransaction();
-
-      if (
-        error instanceof WalletNotFoundException ||
-        error instanceof WalletInsufficientFundsException
-      ) {
-        return err(error);
-      }
-
-      return err(
-        new WalletTransferDatabaseException(error.message, error.stack),
-      );
-    } finally {
-      await queryRunner.release();
+      return err(new WalletSaveDatabaseException(error.message, error.stack));
     }
   }
 
@@ -198,24 +124,21 @@ export class WalletInfrastructure implements WalletRepository {
     userId: string,
     amount: number,
     currency: string,
-    reason?: string,
-  ): WalletResult {
+    transferId: string,
+  ): VoidResult {
     try {
-      const entity = await this.repository.findOne({
-        where: { userId, currency },
-      });
+      const entity = await this.repository.findOne({ where: { userId, currency } });
       if (!entity) {
         return err(new WalletNotFoundException(userId));
       }
 
       const wallet = await this.rebuildWallet(entity.id, userId);
       const version = wallet.getVersion() + 1;
-      const transferId = randomUUID();
 
       await this.ledgerRepo.save({
         walletId: entity.id,
         eventType: 'FundsCredited',
-        payload: { amount, transferId, reason: reason || 'refill' },
+        payload: { amount, transferId, currency },
         version,
       });
 
@@ -223,32 +146,100 @@ export class WalletInfrastructure implements WalletRepository {
         entity.id,
         userId,
         wallet.getBalance() + amount,
+        wallet.getReserved(),
         currency,
         version,
       );
 
-      return ok(wallet);
+      return ok(undefined);
     } catch (error: any) {
-      return err(new WalletTransferDatabaseException(error.message, error.stack));
+      return err(new WalletSaveDatabaseException(error.message, error.stack));
+    }
+  }
+
+  async release(
+    userId: string,
+    amount: number,
+    currency: string,
+    transferId: string,
+  ): VoidResult {
+    try {
+      const entity = await this.repository.findOne({ where: { userId, currency } });
+      if (!entity) {
+        return err(new WalletNotFoundException(userId));
+      }
+
+      const wallet = await this.rebuildWallet(entity.id, userId);
+      const version = wallet.getVersion() + 1;
+
+      await this.ledgerRepo.save({
+        walletId: entity.id,
+        eventType: 'FundsReleased',
+        payload: { amount, transferId, currency },
+        version,
+      });
+
+      await this.updateBalanceView(
+        entity.id,
+        userId,
+        wallet.getBalance(),
+        Math.max(0, wallet.getReserved() - amount),
+        currency,
+        version,
+      );
+
+      return ok(undefined);
+    } catch (error: any) {
+      return err(new WalletSaveDatabaseException(error.message, error.stack));
+    }
+  }
+
+  async commit(
+    userId: string,
+    amount: number,
+    currency: string,
+    transferId: string,
+  ): VoidResult {
+    try {
+      const entity = await this.repository.findOne({ where: { userId, currency } });
+      if (!entity) {
+        return err(new WalletNotFoundException(userId));
+      }
+
+      const wallet = await this.rebuildWallet(entity.id, userId);
+      const version = wallet.getVersion() + 1;
+
+      await this.ledgerRepo.save({
+        walletId: entity.id,
+        eventType: 'TransferCommitted',
+        payload: { amount, transferId, currency },
+        version,
+      });
+
+      await this.updateBalanceView(
+        entity.id,
+        userId,
+        wallet.getBalance() - amount,
+        Math.max(0, wallet.getReserved() - amount),
+        currency,
+        version,
+      );
+
+      return ok(undefined);
+    } catch (error: any) {
+      return err(new WalletSaveDatabaseException(error.message, error.stack));
     }
   }
 
   private async rebuildWallet(
     walletId: string,
     userId: string,
-    manager?: any,
   ): Promise<Wallet> {
-    const ledgerRepo = manager
-      ? manager.getRepository(WalletLedgerEntry)
-      : this.ledgerRepo;
-
     const snapshot = await this.snapshotRepo.findOne({
       where: { walletId },
     });
 
-    const fromVersion = snapshot ? snapshot.version : 0;
-
-    const events = await ledgerRepo.find({
+    const events = await this.ledgerRepo.find({
       where: { walletId },
       order: { version: 'ASC' },
     });
@@ -275,21 +266,17 @@ export class WalletInfrastructure implements WalletRepository {
     walletId: string,
     userId: string,
     balance: number,
+    reserved: number,
     currency: string,
     version: number,
-    manager?: any,
   ) {
-    const repo = manager
-      ? manager.getRepository(WalletBalanceView)
-      : this.balanceViewRepo;
-
-    const existing = await repo.findOne({ where: { userId } });
+    const existing = await this.balanceViewRepo.findOne({ where: { userId } });
     if (existing) {
       existing.balance = String(balance);
       existing.version = version;
-      await repo.save(existing);
+      await this.balanceViewRepo.save(existing);
     } else {
-      await repo.save({
+      await this.balanceViewRepo.save({
         walletId,
         userId,
         currency,

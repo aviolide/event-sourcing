@@ -9,10 +9,9 @@ import {
 export type WalletEventType =
   | 'WalletCreated'
   | 'FundsCredited'
-  | 'FundsDebited'
-  | 'TransferReserved'
-  | 'TransferCommitted'
-  | 'TransferRejected';
+  | 'FundsReserved'
+  | 'FundsReleased'
+  | 'TransferCommitted';
 
 @Entity({ name: 'wallet_ledger_entries' })
 @Index(['walletId', 'version'], { unique: true })
