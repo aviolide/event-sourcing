@@ -11,7 +11,7 @@ import { WalletInfrastructure } from '../wallet.infrastructure';
 import { WalletRepository } from '../../domain/repositories/wallet.repository';
 import { WalletApplication } from '../../application/wallet.application';
 import { WalletCommandConsumer } from './kafka.consumer';
-import { KafkaProducerService, OutboxEvent, InboxGuard } from '@yupi/messaging';
+import { KafkaProducerService, InboxGuard } from '@yupi/messaging';
 
 @Module({
   imports: [
@@ -20,7 +20,6 @@ import { KafkaProducerService, OutboxEvent, InboxGuard } from '@yupi/messaging';
       WalletLedgerEntry,
       WalletSnapshot,
       WalletBalanceView,
-      OutboxEvent,
     ]),
     ConfigModule,
     ClientsModule.registerAsync([
