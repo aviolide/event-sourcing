@@ -51,7 +51,10 @@ export class GatewayResolver {
     if (!projection) {
       throw new UnauthorizedException('Wallet not found in projections');
     }
-    return projection;
+    return {
+      ...projection,
+      available: projection.balance - projection.reserved,
+    };
   }
 
   @UseGuards(JwtAuthGuard)

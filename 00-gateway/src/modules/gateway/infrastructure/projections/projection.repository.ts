@@ -4,6 +4,8 @@ export interface WalletProjection {
   id: string;
   userId: string;
   balance: number;
+  reserved: number;
+  available: number;
   currency: string;
 }
 

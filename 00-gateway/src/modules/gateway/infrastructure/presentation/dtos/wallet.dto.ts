@@ -16,6 +16,14 @@ export class WalletDto {
   balance: number;
 
   @Field()
+  @IsNumber()
+  reserved: number;
+
+  @Field()
+  @IsNumber()
+  available: number;
+
+  @Field()
   @IsString()
   currency: string;
 }

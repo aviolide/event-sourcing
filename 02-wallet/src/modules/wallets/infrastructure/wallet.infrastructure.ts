@@ -255,6 +255,7 @@ export class WalletInfrastructure implements WalletRepository {
         userId,
         currency: wallet.getCurrency(),
         balance: String(wallet.getBalance()),
+        reserved: String(wallet.getReserved()),
         version: wallet.getVersion(),
       });
     }
@@ -273,6 +274,7 @@ export class WalletInfrastructure implements WalletRepository {
     const existing = await this.balanceViewRepo.findOne({ where: { userId } });
     if (existing) {
       existing.balance = String(balance);
+      existing.reserved = String(reserved);
       existing.version = version;
       await this.balanceViewRepo.save(existing);
     } else {
@@ -281,6 +283,7 @@ export class WalletInfrastructure implements WalletRepository {
         userId,
         currency,
         balance: String(balance),
+        reserved: String(reserved),
         version,
       });
     }

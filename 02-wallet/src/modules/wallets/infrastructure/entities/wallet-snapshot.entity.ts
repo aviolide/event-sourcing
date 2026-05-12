@@ -25,6 +25,9 @@ export class WalletSnapshot {
   @Column({ type: 'numeric', precision: 14, scale: 2, default: 0 })
   balance: string;
 
+  @Column({ type: 'numeric', precision: 14, scale: 2, default: 0 })
+  reserved: string;
+
   @Column({ type: 'integer' })
   version: number;
 
