@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ClientKafka } from '@nestjs/microservices';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
@@ -11,10 +12,11 @@ import { RefreshToken } from '../infrastructure/entities/auth.entity';
 import { InvalidCredentialsException } from '../../../core/exceptions/auth.exception';
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from '../domain/repositories/auth.repository';
-import { OutboxPublisher, Topics } from '@yupi/messaging';
+import { Topics, createEnvelope } from '@yupi/messaging';
 
 @Injectable()
 export class AuthApplication {
+  private readonly logger = new Logger(AuthApplication.name);
   private readonly accessTokenTtl: string;
   private readonly refreshTokenTtl: string;
 
@@ -23,7 +25,8 @@ export class AuthApplication {
     private readonly jwtService: JwtService,
     @Inject(AuthRepository)
     private readonly authRepo: AuthRepository,
-    private readonly outboxPublisher: OutboxPublisher,
+    @Inject('AUTH_KAFKA_CLIENT')
+    private readonly kafkaClient: ClientKafka,
     private readonly configService: ConfigService,
   ) {
     this.accessTokenTtl = this.configService.get('JWT_EXPIRES_IN')!;
@@ -46,20 +49,27 @@ export class AuthApplication {
     }
 
     const createdUser = saveResult.value;
+    const userId = createdUser.properties().id!;
 
-    await this.outboxPublisher.save({
-      topic: Topics.EVT_USER_CREATED,
+    const envelope = createEnvelope({
+      eventId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId: randomUUID(),
+      aggregateId: userId,
+      aggregateType: 'User',
+      aggregateVersion: 1,
+      occurredAt: new Date().toISOString(),
+      producer: 'auth-service',
       payload: {
-        id: createdUser.properties().id!,
+        id: userId,
         phone,
         email,
         fullName,
       },
-      aggregateId: createdUser.properties().id!,
-      aggregateType: 'User',
-      aggregateVersion: 1,
-      producer: 'auth-service',
     });
+
+    this.kafkaClient.emit(Topics.EVT_USER_CREATED, envelope);
+    this.logger.log(`Emitted ${Topics.EVT_USER_CREATED} for userId=${userId}`);
 
     const tokens = await this.generateTokens(createdUser);
 

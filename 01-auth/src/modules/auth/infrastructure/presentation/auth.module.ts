@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 
 import { AuthController } from './auth.controller';
 import { AuthApplication } from '../../application/auth.application';
@@ -17,15 +16,12 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { EnvVars } from 'src/config/env.validation';
 import { AuthRepository } from '../../domain/repositories/auth.repository';
-import { OutboxProcessor } from './outbox.processor';
-import { OutboxEvent, OutboxPublisher } from '@yupi/messaging';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RefreshToken, OutboxEvent]),
+    TypeOrmModule.forFeature([RefreshToken]),
     ConfigModule,
     UsersModule,
-    ScheduleModule.forRoot(),
 
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -72,8 +68,6 @@ import { OutboxEvent, OutboxPublisher } from '@yupi/messaging';
     },
     JwtStrategy,
     JwtAuthGuard,
-    OutboxPublisher,
-    OutboxProcessor,
   ],
   exports: [
     AuthApplication,
