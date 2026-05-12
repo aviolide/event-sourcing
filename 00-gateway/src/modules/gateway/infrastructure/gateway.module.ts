@@ -3,15 +3,38 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 
 import { GatewayResolver } from './presentation/gateway.resolver';
-import { DownstreamHttpClient } from './http/downstream-http.client';
+import { AuthHttpClient } from './http/auth-http.client';
 import { JwtStrategy } from '../../../core/guards/jwt.strategy';
 import { JwtAuthGuard } from '../../../core/guards/jwt-auth.guard';
+import { KafkaProducerService } from '@yupi/messaging';
+import {
+  ProjectionRepository,
+  InMemoryProjectionRepository,
+} from './projections/projection.repository';
 
 @Module({
   imports: [
     ConfigModule,
+    ClientsModule.registerAsync([
+      {
+        name: 'KAFKA_CLIENT',
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.KAFKA,
+          options: {
+            client: {
+              clientId: config.get<string>('KAFKA_CLIENT_ID'),
+              brokers: [config.get<string>('KAFKA_BROKER')!],
+            },
+            producerOnlyMode: true,
+          },
+        }),
+      },
+    ]),
     GraphQLModule.forRootAsync<ApolloDriverConfig>({
       driver: ApolloDriver,
       imports: [ConfigModule],
@@ -22,21 +45,12 @@ import { JwtAuthGuard } from '../../../core/guards/jwt-auth.guard';
 
         return {
           autoSchemaFile: isProd ? true : join(process.cwd(), 'src/schema.gql'),
-          // autoSchemaFile: true,
           sortSchema: true,
-          playground: !isProd,            // OWASP: disable in prod
-          introspection: !isProd,         // OWASP: disable in prod
-
-          // Context with request (to read Authorization)
+          playground: !isProd,
+          introspection: !isProd,
           context: ({ req }) => ({ req }),
-
-          // limits (OWASP: resource consumption)
-          validationRules: [
-            // Si quieres más duro luego: depth-limit / cost-analysis
-          ],
-
+          validationRules: [],
           formatError: (formattedError) => {
-            // dont show stack traces to client
             return {
               message: formattedError.message,
               extensions: {
@@ -49,10 +63,13 @@ import { JwtAuthGuard } from '../../../core/guards/jwt-auth.guard';
     }),
   ],
   providers: [
-    DownstreamHttpClient,
+    AuthHttpClient,
+    KafkaProducerService,
     GatewayResolver,
-
-    // Auth
+    {
+      provide: ProjectionRepository,
+      useClass: InMemoryProjectionRepository,
+    },
     JwtStrategy,
     JwtAuthGuard,
   ],
