@@ -2,15 +2,19 @@ export const Topics = {
   // Commands
   CMD_USER_REGISTER: 'cmd.user.register',
   CMD_PAYMENT_TRANSFER_CREATE: 'cmd.payment.transfer.create',
-  CMD_WALLET_TRANSFER: 'cmd.wallet.transfer',
+  CMD_WALLET_RESERVE: 'cmd.wallet.reserve',
+  CMD_WALLET_CREDIT: 'cmd.wallet.credit',
+  CMD_WALLET_RELEASE: 'cmd.wallet.release',
   CMD_WALLET_REFILL: 'cmd.wallet.refill',
 
   // Events
   EVT_USER_CREATED: 'evt.user.created',
   EVT_WALLET_CREATED: 'evt.wallet.created',
-  EVT_WALLET_DEBITED: 'evt.wallet.debited',
+  EVT_WALLET_RESERVED: 'evt.wallet.reserved',
+  EVT_WALLET_RESERVE_FAILED: 'evt.wallet.reserve.failed',
   EVT_WALLET_CREDITED: 'evt.wallet.credited',
-  EVT_PAYMENT_CREATED: 'evt.payment.created',
+  EVT_WALLET_CREDIT_FAILED: 'evt.wallet.credit.failed',
+  EVT_WALLET_RELEASED: 'evt.wallet.released',
   EVT_PAYMENT_COMPLETED: 'evt.payment.completed',
   EVT_PAYMENT_FAILED: 'evt.payment.failed',
 } as const;
