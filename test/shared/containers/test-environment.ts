@@ -32,16 +32,19 @@ export interface TestEnvironmentConfig {
 
 export async function startTestEnvironment(
   services: TestServiceName[] = [],
+  skipLaunch = false,
 ): Promise<TestEnvironmentConfig> {
   const config = getConfig();
-  if (started) {
+  if (started || !skipLaunch) {
+    console.log('Test environment already started, checking services:', services);
     await waitForServices(config.services, services);
     return config;
   }
 
   await waitForPostgres(config.postgres);
-  await waitForKafka(config.kafka.broker);
-  await waitForServices(config.services, services);
+  //console.log('Starting test environment after psql:', config)
+  // await waitForKafka(config.kafka.broker);
+  // await waitForServices(config.services, services);
   started = true;
 
   return config;
@@ -169,7 +172,7 @@ async function waitForService(
       return requestOk(url);
     },
     {
-      timeout: 60000,
+      timeout: 10000,
       interval: 1000,
       message: `${serviceName} service is not ready at ${url}`,
     },

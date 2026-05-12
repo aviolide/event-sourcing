@@ -64,101 +64,104 @@ export class WalletInfrastructure implements WalletRepository {
     currency: string,
   ): Promise<WalletTransferResult> {
     if (fromUserId === toUserId) {
-    return err(
-      new WalletInsufficientFundsException(
-        'Cannot transfer to the same user',
-      ),
-    );
-  }
-
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
-
-  try {
-    const walletRepo = queryRunner.manager.getRepository(WalletEntity);
-
-    // Lock wallets to avoid double spend
-    const fromWallet = await walletRepo.findOne({
-      where: { userId: fromUserId, currency },
-      lock: { mode: 'pessimistic_write' },
-    });
-
-    if (!fromWallet) {
-      throw new WalletNotFoundException(
-        `Wallet not found for userId=${fromUserId} currency=${currency}`,
+      return err(
+        new WalletInsufficientFundsException(
+          'Cannot transfer to the same user',
+        ),
       );
     }
 
-    const toWallet = await walletRepo.findOne({
-      where: { userId: toUserId, currency },
-      lock: { mode: 'pessimistic_write' },
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!toWallet) {
-      throw new WalletNotFoundException(
-        `Wallet not found for userId=${toUserId} currency=${currency}`,
+    try {
+      const walletRepo = queryRunner.manager.getRepository(WalletEntity);
+
+      // Lock wallets to avoid double spend
+      const fromWallet = await walletRepo.findOne({
+        where: { userId: fromUserId, currency },
+        lock: { mode: 'pessimistic_write' },
+      });
+      console.log('from wallet', fromWallet)
+
+      if (!fromWallet) {
+        throw new WalletNotFoundException(
+          `Wallet not found for userId=${fromUserId} currency=${currency}`,
+        );
+      }
+
+      const toWallet = await walletRepo.findOne({
+        where: { userId: toUserId, currency },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      console.log('to wallet', toWallet)
+      if (!toWallet) {
+        throw new WalletNotFoundException(
+          `Wallet not found for userId=${toUserId} currency=${currency}`,
+        );
+      }
+      
+      const fromBalance = Number(fromWallet.balance);
+      const toBalance = Number(toWallet.balance);
+
+      if (Number.isNaN(fromBalance) || Number.isNaN(toBalance)) {
+        throw new WalletTransferDatabaseException(
+          'Invalid wallet balance format',
+        );
+      }
+
+      
+      // Validate funds
+      if (fromBalance < amount) {
+        throw new WalletInsufficientFundsException(
+          `Insufficient funds in wallet of userId=${fromUserId}`,
+        );
+      }
+
+      // Update balances (convert back to string for DB)
+      fromWallet.balance = String(fromBalance - amount);
+      toWallet.balance = String(toBalance + amount);
+
+      await walletRepo.save(fromWallet);
+      await walletRepo.save(toWallet);
+
+      await queryRunner.commitTransaction();
+
+      // Map to domain
+      const fromDomain = new Wallet({
+        id: fromWallet.id,
+        userId: fromWallet.userId,
+        balance: Number(fromWallet.balance),
+        currency: fromWallet.currency,
+      });
+
+      const toDomain = new Wallet({
+        id: toWallet.id,
+        userId: toWallet.userId,
+        balance: Number(toWallet.balance),
+        currency: toWallet.currency,
+      });
+
+      return ok({ from: fromDomain, to: toDomain });
+    } catch (error: any) {
+      console.log("🚀 ~ WalletInfrastructure ~ error:", error)
+      await queryRunner.rollbackTransaction();
+
+      if (
+        error instanceof WalletNotFoundException ||
+        error instanceof WalletInsufficientFundsException
+      ) {
+        return err(error);
+      }
+
+      return err(
+        new WalletTransferDatabaseException(error.message, error.stack),
       );
+    } finally {
+      await queryRunner.release();
     }
-    
-    const fromBalance = Number(fromWallet.balance);
-    const toBalance = Number(toWallet.balance);
-
-    if (Number.isNaN(fromBalance) || Number.isNaN(toBalance)) {
-      throw new WalletTransferDatabaseException(
-        'Invalid wallet balance format',
-      );
-    }
-
-    // Validate funds
-    if (fromBalance < amount) {
-      throw new WalletInsufficientFundsException(
-        `Insufficient funds in wallet of userId=${fromUserId}`,
-      );
-    }
-
-    // Update balances (convert back to string for DB)
-    fromWallet.balance = String(fromBalance - amount);
-    toWallet.balance = String(toBalance + amount);
-
-    await walletRepo.save(fromWallet);
-    await walletRepo.save(toWallet);
-
-    await queryRunner.commitTransaction();
-
-    // Map to domain
-    const fromDomain = new Wallet({
-      id: fromWallet.id,
-      userId: fromWallet.userId,
-      balance: Number(fromWallet.balance),
-      currency: fromWallet.currency,
-    });
-
-    const toDomain = new Wallet({
-      id: toWallet.id,
-      userId: toWallet.userId,
-      balance: Number(toWallet.balance),
-      currency: toWallet.currency,
-    });
-
-    return ok({ from: fromDomain, to: toDomain });
-  } catch (error: any) {
-    console.log("🚀 ~ WalletInfrastructure ~ error:", error)
-    await queryRunner.rollbackTransaction();
-
-    if (
-      error instanceof WalletNotFoundException ||
-      error instanceof WalletInsufficientFundsException
-    ) {
-      return err(error);
-    }
-
-    return err(
-      new WalletTransferDatabaseException(error.message, error.stack),
-    );
-  } finally {
-    await queryRunner.release();
-  }
   }
 
   private toDomain(entity: WalletEntity): Wallet {

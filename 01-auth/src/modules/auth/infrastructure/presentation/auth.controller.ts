@@ -37,6 +37,7 @@ export class AuthController {
       body.phone,
       body.password,
     );
+    console.log('register auth controller', result)
 
     if (result.isErr()) {
       const error = result.error;

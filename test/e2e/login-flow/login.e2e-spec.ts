@@ -23,7 +23,7 @@ describe('Login Flow E2E', () => {
   let authUrl: string;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment(['auth']);
+    const config = await startTestEnvironment(['auth'], true);
     authUrl = config.services.authUrl;
 
     dataSource = new DataSource({
@@ -56,6 +56,7 @@ describe('Login Flow E2E', () => {
 
   it('should login with valid credentials', async () => {
     const user = await registerUser();
+    console.log('user registered', user)
 
     const response = await postJson<AuthResponseBody>(`${authUrl}/auth/login`, {
       identifier: user.user.email,

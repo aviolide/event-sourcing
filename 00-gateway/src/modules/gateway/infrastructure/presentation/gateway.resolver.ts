@@ -8,6 +8,7 @@ import { RefreshInput, RefreshResponse } from './dtos/refresh.dto';
 import { WalletDto } from './dtos/wallet.dto';
 import { TransferInput, TransferResponse } from './dtos/transfer.dto';
 import { RegisterInput, RegisterResponse } from './dtos/register.dto';
+import { RefillWalletResponse, RefillWalletInput } from './dtos/refill.dto';
 
 @Resolver()
 export class GatewayResolver {
@@ -15,6 +16,7 @@ export class GatewayResolver {
 
   @Mutation(() => RegisterResponse)
   async register(@Args('input') input: RegisterInput) {
+    console.log('register', input);
     const res = await this.http.register(input);
 
     return {
@@ -27,9 +29,9 @@ export class GatewayResolver {
   async login(@Args('input') input: LoginInput) {
     const res = await this.http.login(input);
     return {
-    accessToken: res.tokens.accessToken,
-    refreshToken: res.tokens.refreshToken,
-  };
+      accessToken: res.tokens.accessToken,
+      refreshToken: res.tokens.refreshToken,
+    };
   }
 
   @Mutation(() => RefreshResponse)
@@ -55,13 +57,33 @@ export class GatewayResolver {
 
     if (!bearer) throw new UnauthorizedException('Missing Authorization header');
 
-      const res = await this.http.transfer(input, bearer);
+    const res = await this.http.transfer(input, bearer);
 
-      return {
-        id: res.id,
-        status: res.status,
-        description: res.description
-      };
+    return {
+      id: res.id,
+      status: res.status,
+      description: res.description
+    };
+  }
 
+  @UseGuards(JwtAuthGuard)
+  @Mutation(() => RefillWalletResponse)
+  async refillWallet(
+    @Args('input') input: RefillWalletInput,
+    @Context() ctx: any,
+  ) {
+    console.log('catch refill')
+    const bearer =
+      ctx?.req?.headers?.authorization ??
+      ctx?.req?.headers?.Authorization;   
+    if (!bearer) throw new UnauthorizedException('Missing Authorization header');
+
+    const res = await this.http.refillWallet(input, bearer);
+    
+    return {
+      id: res.id,
+      status: res.status,
+      description: res.description
+    };
   }
 }

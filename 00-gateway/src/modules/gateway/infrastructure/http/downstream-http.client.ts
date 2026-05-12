@@ -22,6 +22,7 @@ export class DownstreamHttpClient {
     password: string;
   }) {
     const { data } = await this.auth.post('/auth/register', dto);
+    console.log("🚀 ~ DownstreamHttpClient ~ register ~ data:", data)
     return data;
   }
 
@@ -41,6 +42,21 @@ export class DownstreamHttpClient {
     return data;
   }
 
+  
+  async refillWallet(payload: {
+    amount: number;
+    currency: string;
+    description?: string;
+  }, bearer: string) {
+    const { data } = await this.payments.post(
+      `/payments/refill`,
+      payload,
+      { headers: { Authorization: bearer } },
+    );
+    console.log("🚀 ~ DownstreamHttpClient ~ data:", data)
+    return data;
+  }
+
   // PAYMENTS
   async transfer(payload: {
     toUserId: string;
@@ -53,7 +69,6 @@ export class DownstreamHttpClient {
       payload,
       { headers: { Authorization: bearer } },
     );
-    console.log("🚀 ~ DownstreamHttpClient ~ data:", data)
     return data;
   }
 }

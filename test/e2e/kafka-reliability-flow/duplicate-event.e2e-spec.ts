@@ -19,7 +19,7 @@ describe('Kafka Reliability Flow E2E', () => {
   let userSequence = 1;
 
   beforeAll(async () => {
-    config = await startTestEnvironment(['wallet']);
+    config = await startTestEnvironment(['wallet'], true);
 
     dataSource = new DataSource({
       type: 'postgres',

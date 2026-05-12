@@ -24,7 +24,7 @@ describe('Payment Processing Flow E2E', () => {
   let paymentsUrl: string;
 
   beforeAll(async () => {
-    config = await startTestEnvironment(['wallet', 'payments']);
+    config = await startTestEnvironment(['wallet', 'payments'], true);
     paymentsUrl = config.services.paymentsUrl;
 
     dataSource = new DataSource({
@@ -35,7 +35,9 @@ describe('Payment Processing Flow E2E', () => {
       username: config.postgres.username,
       password: config.postgres.password,
     });
+    console.log('config', config);
     await dataSource.initialize();
+    console.log('data source initialized');
   }, 120000);
 
   afterAll(async () => {
@@ -51,10 +53,12 @@ describe('Payment Processing Flow E2E', () => {
     const toUserId = '88888888-8888-4888-8888-888888888888';
     const token = createTestJwt(JWT_SECRET, { sub: userId, email: 'payer@test.com' });
 
-    await dataSource.query(
+    const dbResult = await dataSource.query(
       `INSERT INTO wallets ("userId", balance, currency) VALUES ($1, $2, $3), ($4, $5, $6)`,
       [userId, '1000.00', 'PEN', toUserId, '0.00', 'PEN'],
     );
+    console.log('Database result:', dbResult);
+
 
     const response = await postJson<PaymentResponseBody>(
       `${paymentsUrl}/payments/transfer`,
@@ -66,6 +70,7 @@ describe('Payment Processing Flow E2E', () => {
       },
       token,
     );
+    console.log('Payment transfer response:', response);
 
     expect(response.status).toBe(201);
     expect(response.body.status).toBe('COMPLETED');

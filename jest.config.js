@@ -85,6 +85,7 @@ module.exports = {
       moduleNameMapper: {
         '^src/(.*)$': '<rootDir>/02-wallet/src/$1',
       },
+      setupFiles: ['<rootDir>/test/e2e/wallet-setup-env.ts'],
     },
     {
       displayName: 'e2e-payments',
@@ -96,6 +97,7 @@ module.exports = {
       moduleNameMapper: {
         '^src/(.*)$': '<rootDir>/03-payments/src/$1',
       },
+      setupFiles: ['<rootDir>/test/e2e/payments-setup-env.ts'],
     },
     {
       displayName: 'e2e-gateway',
