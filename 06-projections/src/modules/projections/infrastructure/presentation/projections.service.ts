@@ -42,62 +42,39 @@ export class ProjectionsService {
     userId: string;
     amount: number;
     currency: string;
-    newBalance: number;
   }) {
     const existing = await this.walletBalanceRepo.findOne({
       where: { userId: payload.userId },
     });
 
     if (existing) {
-      existing.balance = String(payload.newBalance);
-      existing.version += 1;
+      const newBalance = Number(existing.balance) + payload.amount;
+      existing.balance = String(newBalance);
       await this.walletBalanceRepo.save(existing);
       this.logger.log(
-        `Wallet credited projection: userId=${payload.userId} newBalance=${payload.newBalance}`,
+        `Wallet credited projection: userId=${payload.userId} balance=${newBalance}`,
       );
     }
   }
 
-  async onWalletDebited(payload: {
+  async onWalletCommitted(payload: {
     walletId: string;
     userId: string;
     amount: number;
     currency: string;
-    newBalance: number;
   }) {
     const existing = await this.walletBalanceRepo.findOne({
       where: { userId: payload.userId },
     });
 
     if (existing) {
-      existing.balance = String(payload.newBalance);
-      existing.version += 1;
+      const newBalance = Number(existing.balance) - payload.amount;
+      existing.balance = String(newBalance);
       await this.walletBalanceRepo.save(existing);
       this.logger.log(
-        `Wallet debited projection: userId=${payload.userId} newBalance=${payload.newBalance}`,
+        `Wallet committed projection: userId=${payload.userId} balance=${newBalance}`,
       );
     }
-  }
-
-  async onPaymentCreated(payload: {
-    paymentId: string;
-    fromUserId: string;
-    toUserId: string;
-    amount: number;
-    currency: string;
-    description?: string;
-    status: string;
-  }) {
-    await this.paymentStatusRepo.save({
-      paymentId: payload.paymentId,
-      fromUserId: payload.fromUserId,
-      toUserId: payload.toUserId,
-      amount: String(payload.amount),
-      currency: payload.currency,
-      description: payload.description,
-      status: payload.status,
-    });
-    this.logger.log(`Payment projection created: paymentId=${payload.paymentId}`);
   }
 
   async onPaymentStatusUpdated(payload: {
@@ -113,6 +90,18 @@ export class ProjectionsService {
       await this.paymentStatusRepo.save(existing);
       this.logger.log(
         `Payment status updated: paymentId=${payload.paymentId} status=${payload.status}`,
+      );
+    } else {
+      await this.paymentStatusRepo.save({
+        paymentId: payload.paymentId,
+        fromUserId: payload.paymentId,
+        toUserId: payload.paymentId,
+        amount: '0',
+        currency: 'PEN',
+        status: payload.status,
+      });
+      this.logger.log(
+        `Payment projection created on status update: paymentId=${payload.paymentId}`,
       );
     }
   }

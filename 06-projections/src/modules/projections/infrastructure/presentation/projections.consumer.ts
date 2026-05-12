@@ -39,16 +39,16 @@ export class ProjectionsConsumer {
     });
   }
 
-  @EventPattern(Topics.EVT_WALLET_DEBITED)
-  async onWalletDebited(
+  @EventPattern(Topics.EVT_WALLET_COMMITTED)
+  async onWalletCommitted(
     @Payload() message: any,
     @Ctx() context: KafkaContext,
   ) {
     const envelope = message.payload ? message : { payload: message };
     const messageId = envelope.messageId || context.getMessage().offset;
 
-    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_DEBITED, async () => {
-      await this.projectionsService.onWalletDebited(envelope.payload);
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_COMMITTED, async () => {
+      await this.projectionsService.onWalletCommitted(envelope.payload);
     });
   }
 
