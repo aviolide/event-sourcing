@@ -1,396 +1,319 @@
 # Digital Wallet Platform
+
 ### Secure Microservices Architecture with NestJS, GraphQL & Docker
 
-This is a clone of a  **production-grade digital wallet platform** built using **NestJS microservices**, **GraphQL Gateway**, **Kafka**, and **PostgreSQL**, following **Hexagonal Architecture**, **SOLID principles**, **Docker best practices**, and **OWASP Top 10 (2025)** security guidelines.
-
-This project is designed as a **real-world reference architecture** for secure financial systems.
-commands
- & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Ubuntu" --type headless
- & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" guestproperty enumerate "Ubuntu"
+A **production-grade digital wallet platform** built with **NestJS microservices**, **GraphQL Gateway**, **Kafka**, and **PostgreSQL**, following **Hexagonal Architecture**, **SOLID principles**, **Docker best practices**, and **OWASP Top 10 (2025)** security guidelines.
 
 ---
 
-## 🧱 High-Level Architecture
-
-Client (Web / Mobile)
-        |
-        v
-GraphQL Gateway (BFF)
-        |
- Auth | Wallet | Payments
-        |
-     PostgreSQL
-        |
-      Kafka
-
----
-
-## 🔐 Security – OWASP Top 10 (2025)
-
-| OWASP Risk | Mitigation |
-|-----------|-----------|
-Broken Access Control | JWT Guards (Gateway & Services) |
-Injection | class-validator + whitelist |
-Auth Failures | Access + Refresh token strategy |
-Sensitive Data Exposure | bcrypt + JWT secrets |
-Security Misconfiguration | Zod env validation |
-Excessive Resource Consumption | Rate limiting |
-CSRF | Apollo CSRF protection |
-Information Disclosure | Error sanitization |
-Dependency Risks | Minimal Docker images |
----
-
-# 📚 NestJS Digital Wallet Clone - Detailed Architecture Documentation
-
-Based on my analysis of the repository at `https://github.com/andrucar25/nestjs-digital-wallet-clone`, here is a comprehensive breakdown of the project's architecture, nested modules, DTOs, and design patterns.
-
----
-
-## 🏗️ High-Level Architecture Overview
+## Architecture Overview
 
 ```
 Client (Web / Mobile)
         │
         ▼
-┌───────────────────────┐
-│  GraphQL Gateway (BFF)│  ← 00-gateway
-│  • Apollo Server      │
-│  • JWT Auth Guards    │
-│  • Downstream HTTP    │
-└────────┬──────────────┘
-         │
-    ┌────┴────┬─────────┬─────────┐
-    ▼         ▼         ▼         ▼
-┌──────┐ ┌──────┐ ┌─────────┐ ┌────────┐
-│ Auth │ │Wallet│ │Payments │ │ Kafka  │
-│01-auth││02-wallet││03-payments││ Event Bus│
-└──┬───┘ └──┬───┘ └────┬────┘ └────────┘
-   │        │          │
-   ▼        ▼          ▼
-┌─────────────────────────┐
-│   PostgreSQL (Shared)   │
-│   • TypeORM Entities    │
-│   • Auto-sync enabled   │
-└─────────────────────────┘
+┌────────────────────────────┐
+│  00-gateway (GraphQL BFF)  │  :3000
+│  Apollo Server · JWT Guard │
+└────────────┬───────────────┘
+             │  HTTP
+   ┌─────────┼─────────┬──────────────┐
+   ▼         ▼         ▼              │
+┌──────┐ ┌──────┐ ┌─────────┐        │
+│01-auth│ │02-wal│ │03-pay   │        │
+│ :3010 │ │ :3020│ │  :3030  │        │
+└──┬───┘ └──┬───┘ └────┬────┘        │
+   │        │          │              │
+   └────────┴────┬─────┘              │
+                 ▼                    │
+          ┌────────────┐              │
+          │   Kafka    │              │
+          │ Event Bus  │              │
+          └─────┬──────┘              │
+                │                     │
+   ┌────────────┼────────────┐        │
+   ▼            ▼            ▼        │
+┌──────┐  ┌──────────┐  ┌────────┐   │
+│04-log│  │04-logging │  │02-wal  │   │
+│ :3050│  │  :3040    │  │consumer│   │
+└──┬───┘  └────┬─────┘  └────────┘   │
+   │           │                      │
+   └───────────┴──────────────────────┘
+                 ▼
+       ┌──────────────────┐
+       │   PostgreSQL     │
+       │   (shared DB)    │
+       └──────────────────┘
 ```
 
-### 🔑 Key Technologies
+### Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| **00-gateway** | 3000 | GraphQL BFF — Apollo Server, JWT auth guards, rate limiting. Routes to downstream services via HTTP. |
+| **01-auth** | 3010 | Identity provider — user registration, login, JWT issuance (access + refresh tokens), password hashing (bcrypt). Emits `user.created` events. |
+| **02-wallet** | 3020 | Financial ledger — manages user wallets and balances. Consumes `user.created` to auto-create wallets. Handles transfers with pessimistic locking. |
+| **03-payments** | 3030 | Transaction processing — creates payments, triggers wallet transfers via Kafka. Consumes `wallet.transfer.processed` to update payment status. Supports refill operations. |
+| **04-log** | 3050 | User activity log — creates per-user log entries on `user.created` events. Maintains user-scoped ledger records. |
+| **04-logging** | 3040 | Append-only event store — consumes **all** Kafka events from every service and persists them to PostgreSQL. Exposes SSE stream + REST API. Includes a live dashboard frontend. |
+
+### Kafka Event Flow
+
+```
+01-auth ──► user.created ──────────► 02-wallet (creates wallet)
+                                 ├─► 04-log   (creates user log)
+                                 └─► 04-logging (persists event)
+
+03-payments ──► wallet.transfer.requested ──► 02-wallet (executes transfer)
+                                           └─► 04-logging (persists event)
+
+02-wallet ──► wallet.transfer.processed ──► 03-payments (updates status)
+                                         └─► 04-logging (persists event)
+```
+
+---
+
+## Key Technologies
+
 | Technology | Purpose |
 |-----------|---------|
 | **NestJS** | Microservices framework with dependency injection |
-| **GraphQL (Apollo)** | Gateway BFF layer for unified API |
-| **Kafka** | Event-driven communication between services |
-| **PostgreSQL** | Relational database with TypeORM |
-| **Docker** | Containerization with multi-stage builds |
+| **GraphQL (Apollo)** | Gateway BFF layer — unified API for clients |
+| **Kafka (KRaft)** | Event-driven async communication between services |
+| **PostgreSQL 15** | Relational database with TypeORM |
+| **Docker** | Multi-stage builds, non-root containers |
 | **Zod** | Runtime environment variable validation |
 | **class-validator** | DTO validation with decorators |
-| **neverthrow** | Functional error handling (Result/Either pattern) |
+| **neverthrow** | Functional error handling (`Result<T, E>` pattern) |
+| **Pact** | Consumer-driven contract testing |
+| **Jest** | Unit, integration, e2e, chaos, and performance tests |
 
 ---
 
-## 📦 Nested Modules Structure (Hexagonal Architecture)
+## Hexagonal Architecture
 
-Each microservice follows **Hexagonal Architecture** (Ports & Adapters) with a consistent nested module pattern:
+Each microservice follows **Hexagonal Architecture** (Ports & Adapters):
 
-### 🗂️ Module Folder Structure Template
 ```
 src/
-├── config/                    # Global configuration
-│   └── env.validation.ts     # Zod schema for env vars
-├── core/                      # Shared cross-cutting concerns
-│   ├── guards/               # JWT guards, auth strategies
-│   ├── exceptions/           # Custom exception classes
-│   └── interceptors/         # Logging, error handling
-├── modules/
-│   ├── [feature]/            # e.g., auth, wallets, users
-│   │   ├── domain/           # 🎯 Core business logic (PURE)
-│   │   │   ├── repositories/ # Repository interfaces (Ports)
-│   │   │   ├── entities/     # Domain entities (User, Wallet)
-│   │   │   └── [feature].types.ts  # Domain types/DTOs
-│   │   │
-│   │   ├── application/      # 🔄 Use cases / Application services
-│   │   │   └── [feature].application.ts  # Orchestrates domain logic
-│   │   │
-│   │   └── infrastructure/   # 🔌 External adapters (Adapters)
-│   │       ├── entities/     # TypeORM entities (DB schema)
-│   │       ├── presentation/ # Controllers, DTOs, Kafka consumers
-│   │       │   ├── dtos/     # Input validation DTOs
-│   │       │   ├── [feature].controller.ts
-│   │       │   ├── kafka.producer.ts
-│   │       │   └── jwt.strategy.ts
-│   │       └── [feature].infrastructure.ts  # Repository implementation
-│   │
-│   └── [feature]/presentation/[feature].module.ts  # Module wiring
-└── main.ts                    # Bootstrap
+├── config/
+│   └── env.validation.ts          # Zod schema for env vars
+├── core/
+│   ├── guards/                    # JWT guards, auth strategies
+│   ├── exceptions/                # Custom typed exceptions
+│   └── interceptors/              # Logging, error handling
+└── modules/
+    └── [feature]/
+        ├── domain/                # Core business logic (framework-free)
+        │   ├── repositories/      # Port interfaces (abstractions)
+        │   └── [feature].ts       # Domain entity
+        ├── application/           # Use-case orchestration
+        │   └── [feature].application.ts
+        └── infrastructure/        # Adapters (DB, Kafka, HTTP)
+            ├── entities/          # TypeORM entities
+            ├── [feature].infrastructure.ts  # Repository impl
+            └── presentation/      # Controllers, DTOs, modules
+                ├── dtos/
+                ├── kafka.consumer.ts
+                ├── kafka.producer.ts
+                └── [feature].module.ts
 ```
 
-### 🔗 Module Dependency Injection Pattern
-```typescript
-// Example: WalletModule (02-wallet/src/modules/wallets/infrastructure/presentation/wallet.module.ts)
-@Module({
-  imports: [TypeOrmModule.forFeature([WalletEntity])],
-  controllers: [WalletController, WalletKafkaConsumer],
-  providers: [
-    WalletInfrastructure,           // Adapter implementation
-    WalletApplication,              // Use case service
-    {
-      provide: WalletRepository,    // Domain port interface
-      useExisting: WalletInfrastructure, // Inject adapter as port
-    },
-  ],
-  exports: [WalletApplication, WalletRepository], // Expose for other modules
-})
-export class WalletModule {}
-```
-
-### 🔄 Cross-Module Communication
-```typescript
-// AuthModule imports UsersModule for user operations
-imports: [
-  TypeOrmModule.forFeature([RefreshToken]),
-  ConfigModule,
-  UsersModule,  // ← Nested module dependency
-  
-  // JWT configuration
-  JwtModule.registerAsync({...}),
-  
-  // Kafka client for event emission
-  ClientsModule.registerAsync([{
-    name: 'AUTH_KAFKA_CLIENT',
-    useFactory: (config: ConfigService) => ({
-      transport: Transport.KAFKA,
-      options: { /* broker config */ }
-    })
-  }])
-]
-```
+**Key principles:**
+- **Dependency Inversion** — domain defines interfaces, infrastructure implements them
+- **Pure Domain** — domain entities have zero framework dependencies
+- **Loose Coupling** — services communicate via Kafka events, not direct calls
+- **Functional Errors** — `neverthrow` Result types instead of thrown exceptions
 
 ---
 
-## 📋 DTOs (Data Transfer Objects) Implementation
+## GraphQL API (Gateway)
 
-### 🔐 Validation Strategy
-All DTOs use **`class-validator`** decorators for runtime validation with **whitelist** enabled to prevent injection attacks.
+The gateway exposes the following operations:
 
-### 📝 DTO Examples
+### Mutations
 
-#### `RegisterDto` - User Registration
-```typescript
-// 01-auth/src/modules/auth/infrastructure/presentation/dtos/register.dto.ts
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+| Operation | Auth | Description |
+|-----------|------|-------------|
+| `register(input)` | No | Register a new user, returns access + refresh tokens |
+| `login(input)` | No | Authenticate, returns access + refresh tokens |
+| `refresh(input)` | No | Refresh an expired access token |
+| `transfer(input)` | JWT | Create a payment transfer between users |
+| `refillWallet(input)` | JWT | Add funds to the authenticated user's wallet |
 
-export class RegisterDto {
-  @IsString()
-  @IsNotEmpty()
-  fullName: string;
+### Queries
 
-  @IsEmail()  // Built-in email format validation
-  email: string;
-
-  @IsString()
-  @IsNotEmpty()
-  phone: string;
-
-  @IsString()
-  @MinLength(8)  // OWASP: Minimum password length
-  password: string;
-}
-```
-
-#### `LoginDto` - Authentication
-```typescript
-// 01-auth/src/modules/auth/infrastructure/presentation/dtos/login.dto.ts
-export class LoginDto {
-  @IsString()
-  @IsNotEmpty()
-  identifier: string;  // Accepts email as identifier
-
-  @IsString()
-  @IsNotEmpty()
-  password: string;
-}
-```
-
-#### `RefreshTokenDto` - Token Refresh
-```typescript
-// 01-auth/src/modules/auth/infrastructure/presentation/dtos/refresh-token.dto.ts
-export class RefreshTokenDto {
-  @IsString()
-  @IsNotEmpty()
-  refreshToken: string;
-}
-```
-
-### 🎯 Domain Types vs Presentation DTOs
-
-| Layer | Purpose | Example |
-|-------|---------|---------|
-| **Domain Types** | Internal business contracts | `YupiJwtPayload`, `AuthTokens` |
-| **Presentation DTOs** | External API input validation | `RegisterDto`, `LoginDto` |
-| **Entity Props** | Database mapping | `UserProps`, `WalletEntity` |
-
-```typescript
-// Domain type (01-auth/src/modules/auth/domain/auth.types.ts)
-export interface YupiJwtPayload {
-  sub: string;  // userId
-  email: string;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-```
+| Operation | Auth | Description |
+|-----------|------|-------------|
+| `wallet(userId)` | JWT | Get wallet balance for a user |
 
 ---
 
-## 🔄 Hexagonal Architecture Flow
+## Security — OWASP Top 10 (2025)
 
-### Request Lifecycle Example: User Registration
-
-```
-1. HTTP Request → AuthController (Presentation Layer)
-   │
-   ▼
-2. RegisterDto validation via class-validator
-   │
-   ▼
-3. AuthApplication.register() (Application Layer)
-   │  • Calls bcrypt.hash() for password
-   │  • Creates User domain entity
-   │
-   ▼
-4. UserApplication.save() → AuthRepository.save() (Domain Port)
-   │
-   ▼
-5. AuthInfrastructure.save() (Infrastructure Adapter)
-   │  • TypeORM persists to PostgreSQL
-   │
-   ▼
-6. KafkaProducer.emitUserCreated() (Event Adapter)
-   │  • Publishes event to Kafka topic
-   │
-   ▼
-7. Response sanitized (no password hash) → Client
-```
-
-### Key Architecture Principles
-
-✅ **Dependency Inversion**: Domain layer defines interfaces (`AuthRepository`), infrastructure implements them  
-✅ **Pure Domain Logic**: Domain entities (`User`) have no framework dependencies  
-✅ **Testability**: Application services can be tested with mock repositories  
-✅ **Loose Coupling**: Services communicate via Kafka events, not direct HTTP calls  
-✅ **Security by Design**: Passwords never leave application layer; responses are sanitized
+| Risk | Mitigation |
+|------|------------|
+| Broken Access Control | `JwtAuthGuard` on protected routes (gateway + services) |
+| Injection | `class-validator` whitelist + TypeORM parameterized queries |
+| Authentication Failures | Access + refresh token strategy; bcrypt hashing |
+| Sensitive Data Exposure | Passwords never returned; JWT secrets >= 32 chars |
+| Security Misconfiguration | Zod env validation; GraphQL introspection disabled in prod |
+| Resource Consumption | Rate limiting; GraphQL depth & complexity limits |
+| CSRF | Apollo CSRF protection |
+| Information Disclosure | `formatError` hides stack traces in production |
+| Dependency Risks | Minimal Alpine Docker images; non-root containers |
 
 ---
 
-## 🔐 Security Implementation (OWASP Top 10 2025)
+## Running the Project
 
-| Risk | Mitigation in Project |
-|------|---------------------|
-| **Broken Access Control** | `JwtAuthGuard` on protected routes; role-based checks |
-| **Injection** | `class-validator` whitelist + TypeORM parameterized queries |
-| **Authentication Failures** | Access + Refresh token strategy; bcrypt hashing (12 rounds) |
-| **Sensitive Data Exposure** | Passwords never returned; JWT secrets ≥32 chars; error sanitization |
-| **Security Misconfiguration** | Zod env validation; GraphQL introspection disabled in prod |
-| **Resource Consumption** | Rate limiting ready; Kafka backpressure handling |
-| **CSRF** | Apollo CSRF protection configured |
-| **Information Disclosure** | `formatError` hides stack traces in production |
-| **Dependency Risks** | Minimal Docker images; non-root containers |
+### Prerequisites
 
-### Environment Validation (Zod)
-```typescript
-// 01-auth/src/config/env.validation.ts
-export const envSchema = z.object({
-  JWT_SECRET: z.string().min(32, "Must be ≥32 chars for security"),
-  JWT_EXPIRES_IN: z.string().default("15m"),
-  DB_PASSWORD: z.string().min(1, "Required"),
-  // ... other validated env vars
-});
-```
+- **Node.js** >= 22
+- **pnpm** (via corepack)
+- **Docker** & **Docker Compose**
 
----
-
-## 🐳 Docker & Deployment Best Practices
-
-### Multi-Service Docker Compose
-```yaml
-# docker-compose.yaml highlights
-services:
-  postgres:
-    healthcheck: pg_isready  # Ensures DB ready before services start
-  
-  kafka:
-    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"  # Dev convenience
-  
-  gateway:
-    depends_on: [auth, wallet, payments]  # Service orchestration
-  
-  auth/wallet/payments:
-    build:
-      context: ./0X-service
-      dockerfile: Dockerfile  # Multi-stage builds
-    environment:
-      DB_HOST: postgres  # Service discovery via Docker network
-      KAFKA_BROKER: kafka:9092
-```
-
-### Dockerfile Best Practices Implemented
-```dockerfile
-# Multi-stage build example pattern:
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN pnpm install --frozen-lockfile && pnpm build
-
-FROM node:18-alpine AS runner
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-
-# Security: Non-root user
-USER node
-CMD ["node", "dist/main"]
-```
-
----
-
-## 🚀 Running the Project
+### Quick Start (Docker)
 
 ```bash
-# 1. Copy environment example
-cp .env.example .env
+# 1. Start infrastructure (Postgres + Kafka)
+pnpm compose:stage:infra
 
-# 2. Build and start all services
-docker compose build
-docker compose up
+# 2. Start all services (builds and launches containers)
+pnpm start:services
 
 # Services available at:
-# • Gateway: http://localhost:3000/graphql
-# • Auth: http://localhost:3010
-# • Wallet: http://localhost:3020  
-# • Payments: http://localhost:3030
-# • Kafka: localhost:9092
-# • PostgreSQL: localhost:5432
+#   Gateway (GraphQL):  http://localhost:3000/graphql
+#   Auth:               http://localhost:3010
+#   Wallet:             http://localhost:3020
+#   Payments:           http://localhost:3030
+#   Logging Dashboard:  http://localhost:3040
+#   Kafka:              localhost:9092
+#   PostgreSQL:         localhost:5432
+
+# 3. Tear down everything
+pnpm compose:stage:down
+```
+
+### Local Development (without Docker for services)
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start infrastructure only
+pnpm compose:stage:infra
+
+# Start individual services (each needs its own .env)
+pnpm start:auth
+pnpm start:wallet
+pnpm start:payments
+pnpm start:logging
+pnpm start:gateway
 ```
 
 ---
 
-## 📚 Learning Resources & Patterns Used
+## Event Logging & Live Dashboard (04-logging)
 
-1. **Functional Error Handling**: `neverthrow` library for `Result<T, E>` pattern instead of try/catch [[1]]
-2. **Repository Pattern**: Domain interfaces decoupled from TypeORM implementation
-3. **CQRS-lite**: Application services orchestrate, domain entities hold state
-4. **Event-Driven Architecture**: Kafka for async communication (e.g., `USER_CREATED` events)
-5. **BFF Pattern**: GraphQL Gateway aggregates microservice responses for clients
+The logging microservice acts as an **append-only event store** — it subscribes to all Kafka topics and persists every event to a `event_logs` PostgreSQL table.
+
+- **SSE stream**: `GET http://localhost:3040/events/stream` — real-time event feed via Server-Sent Events
+- **REST API**: `GET http://localhost:3040/events?limit=50` — query recent events
+- **Dashboard**: `http://localhost:3040` — live web UI with color-coded events, auto-reconnect
+
+The `event_logs` table is append-only (no updates or deletes):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Auto-generated primary key |
+| `topic` | varchar | Kafka topic name |
+| `key` | varchar | Kafka message key (nullable) |
+| `payload` | jsonb | Full event payload |
+| `receivedAt` | timestamp | When the event was persisted |
 
 ---
 
-> 💡 **Key Takeaway**: This project exemplifies a **production-ready NestJS microservices architecture** that balances strict separation of concerns (Hexagonal) with practical NestJS patterns (Modules, DI). The nested module structure enables independent deployment while maintaining clear boundaries between domain logic, application use cases, and infrastructure concerns.
+## Testing
 
-For deeper exploration, examine:
-- `01-auth/src/modules/auth/application/auth.application.ts` - Application service orchestration
-- `02-wallet/src/modules/wallets/domain/repositories/wallet.repository.ts` - Domain port definition
-- `00-gateway/src/modules/gateway/infrastructure/gateway.module.ts` - GraphQL BFF configuration
+The project includes a multi-tier test suite managed by Jest:
 
-Let me know if you'd like me to dive deeper into any specific component! 🎯
+```bash
+# Run all tests
+pnpm test
+
+# By category
+pnpm test:unit            # Unit tests
+pnpm test:integration     # Integration tests (Postgres)
+pnpm test:e2e             # All e2e suites
+pnpm test:e2e:auth        # Auth flows (register, login, refresh)
+pnpm test:e2e:wallet      # Wallet transfers, concurrency, Kafka
+pnpm test:e2e:payments    # Payment processing
+pnpm test:e2e:gateway     # Gateway auth guard
+pnpm test:e2e:platform    # Full platform flow
+pnpm test:contracts       # Pact consumer-driven contracts
+pnpm test:chaos           # Chaos / resilience tests
+pnpm test:performance     # Performance tests
+```
+
+> **Note:** E2e tests require running infrastructure (Postgres + Kafka). Start with `pnpm compose:stage:infra` first.
+
+---
+
+## Docker
+
+Each service uses a **4-stage multi-stage Dockerfile**:
+
+1. **deps** — installs all dependencies (cached layer)
+2. **build** — compiles TypeScript to `dist/`
+3. **prod-deps** — installs production-only dependencies
+4. **runner** — minimal Alpine image, non-root user, runs `node dist/main.js`
+
+```bash
+# Build and run everything
+docker compose -f docker-compose.stage.yaml --profile services up -d --build
+```
+
+---
+
+## Project Structure
+
+```
+.
+├── 00-gateway/          # GraphQL BFF gateway
+├── 01-auth/             # Authentication service
+├── 02-wallet/           # Wallet / ledger service
+├── 03-payments/         # Payment processing service
+├── 04-log/              # User activity log service
+├── 04-logging/          # Append-only event store + SSE dashboard
+├── test/                # Monorepo test suite
+│   ├── e2e/             # End-to-end test flows
+│   ├── integration/     # Database integration tests
+│   ├── shared/          # Test helpers, builders, mocks
+│   └── unit/            # Unit tests
+├── docker-compose.yaml          # Dev infra (Postgres + Kafka)
+├── docker-compose.stage.yaml    # Full stack (infra + services)
+├── jest.config.js               # Monorepo Jest configuration
+├── pnpm-workspace.yaml          # pnpm workspace packages
+└── package.json                 # Root scripts and shared deps
+```
+
+---
+
+## Environment Variables
+
+Each service validates its environment with Zod at startup. See `src/config/env.validation.ts` in each service for the full schema. Common variables:
+
+| Variable | Services | Description |
+|----------|----------|-------------|
+| `PORT` | All | HTTP port |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | auth, wallet, payments, log, logging | PostgreSQL connection |
+| `KAFKA_BROKER` | wallet, payments, log, logging | Kafka broker address |
+| `KAFKA_GROUP_ID` | wallet, payments, log, logging | Kafka consumer group |
+| `KAFKA_CLIENT_ID` | payments, logging | Kafka client identifier |
+| `JWT_SECRET` | gateway, auth, payments | JWT signing secret (min 32 chars) |
+| `JWT_EXPIRES_IN` | auth | Access token TTL (default: 15m) |
+| `JWT_REFRESH_SECRET` | auth | Refresh token signing secret |
+| `WALLET_SERVICE_URL` | payments | Wallet service base URL |
+| `AUTH_SERVICE_URL` | gateway | Auth service base URL |
+| `PAYMENTS_SERVICE_URL` | gateway | Payments service base URL |
