@@ -15,4 +15,10 @@ export abstract class WalletRepository {
     amount: number,
     currency: string,
   ): Promise<WalletTransferResult>;
+  abstract credit(
+    userId: string,
+    amount: number,
+    currency: string,
+    reason?: string,
+  ): WalletResult;
 }
