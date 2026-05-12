@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { err, ok, Result } from 'neverthrow';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
-import { PaymentRepository } from '../domain/repositories/payment.repository';
+import { PaymentRepository, RefillResult } from '../domain/repositories/payment.repository';
 import { Payment } from '../domain/payment';
 import { PaymentEntity } from './entities/payment.entity';
 import { BaseException } from '../../../core/exceptions/base.exception';
@@ -16,6 +16,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { refill } from './payment-queries';
 
 export type PaymentResult = Promise<Result<Payment, BaseException>>;
 export type PaymentUpdateResult = Promise<Result<void, BaseException>>;
@@ -27,6 +28,7 @@ export class PaymentInfrastructure implements PaymentRepository {
     private readonly repository: Repository<PaymentEntity>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async createAndProcess(payment: Payment): PaymentResult {
@@ -87,6 +89,37 @@ export class PaymentInfrastructure implements PaymentRepository {
     } catch (error: any) {
       return err(
         new PaymentCreateDatabaseException(error.message, error.stack),
+      );
+    }
+  }
+
+  async refill(
+    toUserId: string,
+    amount: number,
+    currency: string,
+  ): Promise<RefillResult> {
+    try {
+      const result = await refill(this.dataSource.createQueryRunner(), toUserId, amount, currency);
+
+      const payment = new Payment({
+        id: result.to.id,
+        fromUserId: result.to.fromUserId,
+        toUserId: result.to.toUserId,
+        amount: Number(result.to.amount),
+        currency: result.to.currency,
+        description: result.to.description || '',
+        status: result.to.status,
+        createdAt: new Date(result.to.createdAt),
+        updatedAt: new Date(result.to.updatedAt),
+      });
+
+      return ok({ payment });
+    } catch (error: any) {
+      return err(
+        new PaymentCreateDatabaseException(
+          error?.message || 'Error refilling wallet',
+          error?.stack,
+        ),
       );
     }
   }

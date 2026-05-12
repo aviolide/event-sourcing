@@ -6,6 +6,10 @@
 // inside `beforeAll` is too late. Jest evaluates files listed in `setupFiles`
 // before it loads the test modules themselves, so this is the safe place to
 // seed the gateway's expected configuration.
+
+// Load .env.test file for e2e tests
+require('dotenv').config({ path: '.env.test' });
+
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'test';
 process.env.PORT = process.env.PORT ?? '3000';
 process.env.AUTH_SERVICE_URL =

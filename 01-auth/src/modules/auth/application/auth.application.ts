@@ -104,38 +104,38 @@ export class AuthApplication {
   }
 
   private async generateTokens(user: User): Promise<AuthTokens> {
-  const props = user.properties();
-  const payload: YupiJwtPayload = {
-    sub: props.id!,
-    email: props.email
-  };
+    const props = user.properties();
+    const payload: YupiJwtPayload = {
+      sub: props.id!,
+      email: props.email
+    };
 
-  // Access token: use config of JwtModule (secret + expiresIn are there)
-  const accessToken = await this.jwtService.signAsync({
-    ...payload,
-    jti: randomUUID(),
-  });
+    // Access token: use config of JwtModule (secret + expiresIn are there)
+    const accessToken = await this.jwtService.signAsync({
+      ...payload,
+      jti: randomUUID(),
+    });
 
-  // Refresh token: secret and ttl different
-  const refreshToken = await this.jwtService.signAsync({
-    ...payload,
-    jti: randomUUID(),
-  }, {
-    secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
-    expiresIn: this.refreshTokenTtl as string,
-    algorithm: 'HS256',
-  } as any
-);
+    // Refresh token: secret and ttl different
+    const refreshToken = await this.jwtService.signAsync({
+      ...payload,
+      jti: randomUUID(),
+    }, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
+      expiresIn: this.refreshTokenTtl as string,
+      algorithm: 'HS256',
+    } as any
+  );
 
-  const refreshEntity = new RefreshToken();
-  refreshEntity.token = refreshToken;
-  refreshEntity.user = { id: props.id! } as any;
-  refreshEntity.expiresAt = this.addTtlToDate(this.refreshTokenTtl);
+    const refreshEntity = new RefreshToken();
+    refreshEntity.token = refreshToken;
+    refreshEntity.user = { id: props.id! } as any;
+    refreshEntity.expiresAt = this.addTtlToDate(this.refreshTokenTtl);
 
-  await this.authRepo.saveToken(refreshEntity);
+    await this.authRepo.saveToken(refreshEntity);
 
-  return { accessToken, refreshToken };
-}
+    return { accessToken, refreshToken };
+  }
 
   private addTtlToDate(ttl: string): Date {
     const date = new Date();

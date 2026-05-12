@@ -9,10 +9,13 @@ interface GraphqlErrorResponse {
 }
 
 describe('Gateway Auth Guard Flow E2E', () => {
+  console.log('Starting Gateway Auth Guard Flow E2E tests');
   let gatewayUrl: string;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment(['gateway']);
+    console.log('beforeall start env')
+    const config = await startTestEnvironment(['gateway'], true);
+    console.log('beforeall config', config)
     gatewayUrl = `${config.services.gatewayUrl}/graphql`;
   }, 120000);
 
@@ -97,6 +100,32 @@ describe('Gateway Auth Guard Flow E2E', () => {
   });
 
   it('should reject wallet query with invalid JWT', async () => {
+    const response = await postGraphql<GraphqlErrorResponse>(
+      gatewayUrl,
+      `
+        query {
+          wallet(userId: "some-id") {
+            id
+          }
+        }
+      `,
+      undefined,
+      'invalid.jwt.token',
+    );
+
+    expect(response.errors).toBeDefined();
+  });
+
+
+  it('should refill wallet with valid JWT', async () => {
+    const response = await postGraphql<{
+      data?: { register: { accessToken: string; refreshToken: string } };
+      errors?: GraphqlErrorResponse['errors'];
+    }>(
+      gatewayUrl,
+      ` mutation`
+    );
+    
     const response = await postGraphql<GraphqlErrorResponse>(
       gatewayUrl,
       `

@@ -19,7 +19,7 @@ describe('Concurrent Transfers Flow E2E', () => {
   let idSequence = 1;
 
   beforeAll(async () => {
-    const config = await startTestEnvironment(['wallet']);
+    const config = await startTestEnvironment(['wallet'], true);
     walletUrl = config.services.walletUrl;
 
     dataSource = new DataSource({
