@@ -1,7 +1,7 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, KafkaContext, Payload } from '@nestjs/microservices';
-
 import { EventLogApplication } from '../../application/event-log.application';
+import { Topics, ALL_TOPICS } from '@yupi/messaging';
 
 @Controller()
 export class EventsKafkaConsumer {
@@ -9,52 +9,60 @@ export class EventsKafkaConsumer {
 
   constructor(private readonly application: EventLogApplication) {}
 
-  @EventPattern('user.created')
+  @EventPattern(Topics.EVT_USER_CREATED)
   async onUserCreated(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('user.created', data, context);
+    await this.handleEvent(Topics.EVT_USER_CREATED, data, context);
   }
 
-  @EventPattern('wallet.transfer.requested')
-  async onWalletTransferRequested(
+  @EventPattern(Topics.EVT_WALLET_CREATED)
+  async onWalletCreated(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('wallet.transfer.requested', data, context);
+    await this.handleEvent(Topics.EVT_WALLET_CREATED, data, context);
   }
 
-  @EventPattern('wallet.transfer.processed')
-  async onWalletTransferProcessed(
+  @EventPattern(Topics.EVT_WALLET_DEBITED)
+  async onWalletDebited(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('wallet.transfer.processed', data, context);
+    await this.handleEvent(Topics.EVT_WALLET_DEBITED, data, context);
   }
 
-  @EventPattern('payment.created')
+  @EventPattern(Topics.EVT_WALLET_CREDITED)
+  async onWalletCredited(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() context: KafkaContext,
+  ) {
+    await this.handleEvent(Topics.EVT_WALLET_CREDITED, data, context);
+  }
+
+  @EventPattern(Topics.EVT_PAYMENT_CREATED)
   async onPaymentCreated(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('payment.created', data, context);
+    await this.handleEvent(Topics.EVT_PAYMENT_CREATED, data, context);
   }
 
-  @EventPattern('payment.completed')
+  @EventPattern(Topics.EVT_PAYMENT_COMPLETED)
   async onPaymentCompleted(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('payment.completed', data, context);
+    await this.handleEvent(Topics.EVT_PAYMENT_COMPLETED, data, context);
   }
 
-  @EventPattern('payment.failed')
+  @EventPattern(Topics.EVT_PAYMENT_FAILED)
   async onPaymentFailed(
     @Payload() data: Record<string, unknown>,
     @Ctx() context: KafkaContext,
   ) {
-    await this.handleEvent('payment.failed', data, context);
+    await this.handleEvent(Topics.EVT_PAYMENT_FAILED, data, context);
   }
 
   private async handleEvent(
@@ -66,7 +74,7 @@ export class EventsKafkaConsumer {
     this.logger.log(`Received event: topic=${topic} key=${key}`);
 
     try {
-      await this.application.append(topic, key, data);
+      await this.application.append(topic, data);
     } catch (err) {
       this.logger.error(
         `Failed to persist event: topic=${topic}`,

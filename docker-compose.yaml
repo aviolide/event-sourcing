@@ -68,116 +68,189 @@ services:
 
     volumes:
       - yupi_kafkadata:/var/lib/kafka/data
-      
-  # gateway:
-  #   build:
-  #     context: ./00-gateway
-  #     dockerfile: Dockerfile
-  #   container_name: yupi-gateway
-  #   restart: always
 
-  #   env_file:
-  #     - ./00-gateway/.env
+  gateway:
+    build:
+      context: .
+      dockerfile: ./00-gateway/Dockerfile
+    container_name: yupi-gateway
+    restart: always
+    env_file:
+      - ./00-gateway/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: gateway-client
+      AUTH_SERVICE_URL: http://auth:3010
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #   ports:
-  #     - "3000:3000"
+  auth:
+    build:
+      context: .
+      dockerfile: ./01-auth/Dockerfile
+    container_name: yupi-auth
+    restart: always
+    env_file:
+      - ./01-auth/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: auth-service-client
+      KAFKA_GROUP_ID: auth-group
+      PORT: 3010
+    ports:
+      - "3010:3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #   depends_on:
-  #     auth:
-  #       condition: service_started
-  #     wallet:
-  #       condition: service_started
-  #     payments:
-  #       condition: service_started
-  # auth:
-  #   build:
-  #     context: ./01-auth
-  #     dockerfile: Dockerfile
-  #   container_name: yupi-auth
-  #   restart: always
-  #   env_file:
-  #     # - .env
-  #     - ./01-auth/.env 
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     DB_NAME: ${POSTGRES_DB}
-  #     DB_USERNAME: ${POSTGRES_USER}
-  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+  wallet:
+    build:
+      context: .
+      dockerfile: ./02-wallet/Dockerfile
+    container_name: yupi-wallet
+    restart: always
+    env_file:
+      - ./02-wallet/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: wallet-service-client
+      KAFKA_GROUP_ID: wallet-group
+      PORT: 3020
+    ports:
+      - "3020:3020"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #     KAFKA_BROKER: kafka:9092
+  payments:
+    build:
+      context: .
+      dockerfile: ./03-payments/Dockerfile
+    container_name: yupi-payments
+    restart: always
+    env_file:
+      - ./03-payments/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: payments-service-client
+      KAFKA_GROUP_ID: payments-group
+      PORT: 3030
+    ports:
+      - "3030:3030"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #     PORT: 3010
-  #   ports:
-  #     - "3010:3010"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_started
+  saga:
+    build:
+      context: .
+      dockerfile: ./05-saga/Dockerfile
+    container_name: yupi-saga
+    restart: always
+    env_file:
+      - ./05-saga/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: saga-service-client
+      KAFKA_GROUP_ID: saga-group
+      PORT: 3050
+    ports:
+      - "3050:3050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  # wallet:
-  #   build:
-  #     context: ./02-wallet
-  #     dockerfile: Dockerfile
-  #   container_name: yupi-wallet
-  #   restart: always
-  #   env_file:
-  #     # - .env
-  #     - ./02-wallet/.env 
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     DB_NAME: ${POSTGRES_DB}
-  #     DB_USERNAME: ${POSTGRES_USER}
-  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+  projections:
+    build:
+      context: .
+      dockerfile: ./06-projections/Dockerfile
+    container_name: yupi-projections
+    restart: always
+    env_file:
+      - ./06-projections/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: projections-service-client
+      KAFKA_GROUP_ID: projections-group
+      PORT: 3060
+    ports:
+      - "3060:3060"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #     KAFKA_BROKER: kafka:9092
-  #     KAFKA_GROUP_ID: wallet-group
+  logging:
+    build:
+      context: .
+      dockerfile: ./04-logging/Dockerfile
+    container_name: yupi-logging
+    restart: always
+    env_file:
+      - ./04-logging/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: logging-service-client
+      KAFKA_GROUP_ID: logging-group
+      PORT: 3040
+    ports:
+      - "3040:3040"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
-  #     PORT: 3020
-  #   ports:
-  #     - "3020:3020"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_started
-  #     auth:
-  #       condition: service_started
-
-  # payments:
-  #   build:
-  #     context: ./03-payments
-  #     dockerfile: Dockerfile
-  #   container_name: yupi-payments
-  #   restart: always
-
-  #   env_file:
-  #     - ./03-payments/.env
-
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     DB_NAME: ${POSTGRES_DB}
-  #     DB_USERNAME: ${POSTGRES_USER}
-  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
-
-  #     KAFKA_BROKER: kafka:9092
-  #     PORT: 3030
-
-  #   ports:
-  #     - "3030:3030"
-
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_started
-  #     wallet:
-  #       condition: service_started
-  #     auth:
-  #       condition: service_started
 volumes:
   yupi_pgdata:
   yupi_kafkadata:

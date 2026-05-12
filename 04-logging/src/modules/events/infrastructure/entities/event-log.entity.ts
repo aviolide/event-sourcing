@@ -16,7 +16,25 @@ export class EventLogEntity {
   topic: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  key: string | null;
+  messageId: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  correlationId: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  causationId: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  aggregateId: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  aggregateType: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  aggregateVersion: number | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  producer: string | null;
 
   @Column({ type: 'jsonb' })
   payload: Record<string, unknown>;

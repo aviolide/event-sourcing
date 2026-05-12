@@ -14,6 +14,8 @@
     "start:wallet": "pnpm --filter 02-wallet start",
     "start:payments": "pnpm --filter 03-payments start",
     "start:logging": "pnpm --filter 04-logging start",
+    "start:saga": "pnpm --filter 05-saga start",
+    "start:projections": "pnpm --filter 06-projections start",
     "start:services": "docker compose -f docker-compose.stage.yaml --profile services up -d --build auth wallet payments logging gateway",
     "test": "jest",
     "test:watch": "jest --watch",

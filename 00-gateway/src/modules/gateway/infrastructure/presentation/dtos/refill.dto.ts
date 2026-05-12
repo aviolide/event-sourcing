@@ -31,6 +31,10 @@ export class RefillWalletInput {
 export class RefillWalletResponse {
   @Field()
   @IsString()
+  requestId: string;
+
+  @Field()
+  @IsString()
   status: string;
 
   @Field()
@@ -39,5 +43,5 @@ export class RefillWalletResponse {
 
   @Field()
   @IsString()
-  description: string
+  description: string;
 }

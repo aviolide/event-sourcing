@@ -1,51 +1,72 @@
-export interface WalletEssentials {
-  userId: string;
+export interface WalletEvent {
+  type: string;
+  payload: Record<string, unknown>;
+  version: number;
 }
-
-export interface WalletOptionals {
-  id: string;
-  balance: number;
-  currency: string;
-}
-
-export type WalletProps = WalletEssentials & Partial<WalletOptionals>;
 
 export class Wallet {
-  private readonly id?: string;
-  private readonly userId: string;
+  private id: string;
+  private userId: string;
   private balance: number;
   private currency: string;
+  private version: number;
 
-  constructor(props: WalletProps) {
-    this.id = props.id;
-    this.userId = props.userId;
-    this.balance = props.balance ?? 0;
-    this.currency = props.currency ?? 'PEN';
+  constructor(id: string, userId: string, currency = 'PEN') {
+    this.id = id;
+    this.userId = userId;
+    this.balance = 0;
+    this.currency = currency;
+    this.version = 0;
   }
 
-  properties(): WalletProps {
-    return {
-      id: this.id,
-      userId: this.userId,
-      balance: this.balance,
-      currency: this.currency,
-    };
+  static create(id: string, userId: string, currency = 'PEN'): Wallet {
+    return new Wallet(id, userId, currency);
   }
 
-  credit(amount: number) {
-    if (amount <= 0) {
-      throw new Error('Credit amount must be positive');
+  applyEvents(events: Array<{ eventType: string; payload: Record<string, unknown> }>) {
+    for (const event of events) {
+      this.apply(event.eventType, event.payload);
+      this.version++;
     }
-    this.balance += amount;
   }
 
-  debit(amount: number) {
-    if (amount <= 0) {
-      throw new Error('Debit amount must be positive');
+  private apply(eventType: string, payload: Record<string, unknown>) {
+    switch (eventType) {
+      case 'WalletCreated':
+        this.balance = (payload.initialBalance as number) ?? 0;
+        break;
+      case 'FundsCredited':
+        this.balance += payload.amount as number;
+        break;
+      case 'FundsDebited':
+        this.balance -= payload.amount as number;
+        break;
+      default:
+        break;
     }
-    if (this.balance < amount) {
-      throw new Error('Insufficient balance');
-    }
-    this.balance -= amount;
+  }
+
+  canDebit(amount: number): boolean {
+    return this.balance >= amount && amount > 0;
+  }
+
+  getBalance(): number {
+    return this.balance;
+  }
+
+  getVersion(): number {
+    return this.version;
+  }
+
+  getId(): string {
+    return this.id;
+  }
+
+  getUserId(): string {
+    return this.userId;
+  }
+
+  getCurrency(): string {
+    return this.currency;
   }
 }

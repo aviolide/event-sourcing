@@ -11,12 +11,9 @@ import {
   PaymentCreateDatabaseException,
   PaymentNotFoundException,
   PaymentUpdateDatabaseException,
-  WalletServiceException,
 } from '../../../core/exceptions/payment.exception';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import { refill } from './payment-queries';
+import { KafkaProducerService, Topics } from '@yupi/messaging';
+import { randomUUID } from 'node:crypto';
 
 export type PaymentResult = Promise<Result<Payment, BaseException>>;
 export type PaymentUpdateResult = Promise<Result<void, BaseException>>;
@@ -26,45 +23,13 @@ export class PaymentInfrastructure implements PaymentRepository {
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly repository: Repository<PaymentEntity>,
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
+    private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
   async createAndProcess(payment: Payment): PaymentResult {
-    const walletServiceUrl = this.configService.get<string>('WALLET_SERVICE_URL');
-
     const props = payment.properties();
 
-    // -------- 1. Llamar a Wallet por HTTP (transfer) ----------
-    try {
-      await firstValueFrom(
-        this.httpService.post(`${walletServiceUrl}/wallets/transfer`, {
-          fromUserId: props.fromUserId,
-          toUserId: props.toUserId,
-          amount: props.amount,
-          currency: props.currency,
-        }),
-      );
-    } catch (error: any) {
-      console.log("🚀 ~ PaymentInfrastructure ~ error:", error)
-      const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        'Error calling Wallet Service';
-
-        const failedEntity = this.repository.create({
-          ...props,
-          amount: props.amount.toString(),
-          status: 'FAILED',
-        });
-        await this.repository.save(failedEntity);
-
-
-      return err(new WalletServiceException(msg, error?.stack));
-    }
-
-    // -------- 2. Guardar Payment COMPLETED en BD ----------
     try {
       const entity = this.repository.create({
         fromUserId: props.fromUserId,
@@ -72,12 +37,12 @@ export class PaymentInfrastructure implements PaymentRepository {
         amount: props.amount.toString(),
         currency: props.currency,
         description: props.description,
-        status: 'COMPLETED',
+        status: 'PENDING',
       });
 
       const saved = await this.repository.save(entity);
 
-      const paymentCompleted = new Payment({
+      const paymentPending = new Payment({
         ...props,
         id: saved.id,
         status: saved.status,
@@ -85,7 +50,25 @@ export class PaymentInfrastructure implements PaymentRepository {
         updatedAt: saved.updatedAt,
       });
 
-      return ok(paymentCompleted);
+      // Publish command to wallet service instead of calling HTTP
+      await this.kafkaProducer.publish({
+        topic: Topics.CMD_WALLET_TRANSFER,
+        payload: {
+          requestId: saved.id,
+          transferId: randomUUID(),
+          fromUserId: props.fromUserId,
+          toUserId: props.toUserId,
+          amount: props.amount,
+          currency: props.currency,
+          description: props.description,
+        },
+        aggregateId: saved.id,
+        aggregateType: 'PaymentTransfer',
+        aggregateVersion: 1,
+        producer: 'payments-service',
+      });
+
+      return ok(paymentPending);
     } catch (error: any) {
       return err(
         new PaymentCreateDatabaseException(error.message, error.stack),
@@ -97,20 +80,45 @@ export class PaymentInfrastructure implements PaymentRepository {
     toUserId: string,
     amount: number,
     currency: string,
+    description?: string,
   ): Promise<RefillResult> {
     try {
-      const result = await refill(this.dataSource.createQueryRunner(), toUserId, amount, currency);
+      const entity = this.repository.create({
+        fromUserId: toUserId,
+        toUserId,
+        amount: amount.toString(),
+        currency,
+        description: description || 'Refill',
+        status: 'PENDING',
+      });
+
+      const saved = await this.repository.save(entity);
+
+      await this.kafkaProducer.publish({
+        topic: Topics.CMD_WALLET_REFILL,
+        payload: {
+          requestId: saved.id,
+          userId: toUserId,
+          amount,
+          currency,
+          description: description || 'Refill',
+        },
+        aggregateId: saved.id,
+        aggregateType: 'WalletRefill',
+        aggregateVersion: 1,
+        producer: 'payments-service',
+      });
 
       const payment = new Payment({
-        id: result.to.id,
-        fromUserId: result.to.fromUserId,
-        toUserId: result.to.toUserId,
-        amount: Number(result.to.amount),
-        currency: result.to.currency,
-        description: result.to.description || '',
-        status: result.to.status,
-        createdAt: new Date(result.to.createdAt),
-        updatedAt: new Date(result.to.updatedAt),
+        id: saved.id,
+        fromUserId: toUserId,
+        toUserId,
+        amount,
+        currency,
+        description: description || 'Refill',
+        status: saved.status,
+        createdAt: saved.createdAt,
+        updatedAt: saved.updatedAt,
       });
 
       return ok({ payment });

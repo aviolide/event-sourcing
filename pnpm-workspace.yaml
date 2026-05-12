@@ -1,6 +1,9 @@
 packages:
+  - 'packages/messaging'
   - '00-gateway'
   - '01-auth'
   - '02-wallet'
   - '03-payments'
   - '04-logging'
+  - '05-saga'
+  - '06-projections'

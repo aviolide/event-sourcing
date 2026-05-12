@@ -5,10 +5,11 @@ import { EventLogEntity } from '../entities/event-log.entity';
 import { EventLogApplication } from '../../application/event-log.application';
 import { EventsKafkaConsumer } from './kafka.consumer';
 import { SseController } from './sse.controller';
+import { ReplayController } from './replay.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([EventLogEntity])],
-  controllers: [SseController, EventsKafkaConsumer],
+  controllers: [SseController, ReplayController, EventsKafkaConsumer],
   providers: [EventLogApplication],
   exports: [EventLogApplication],
 })

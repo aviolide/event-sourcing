@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { AuthController } from './auth.controller';
 import { AuthApplication } from '../../application/auth.application';
@@ -16,15 +17,16 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { EnvVars } from 'src/config/env.validation';
 import { AuthRepository } from '../../domain/repositories/auth.repository';
-import { KafkaProducer } from './kafka.producer';
+import { OutboxProcessor } from './outbox.processor';
+import { OutboxEvent, OutboxPublisher } from '@yupi/messaging';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([RefreshToken]),
+    TypeOrmModule.forFeature([RefreshToken, OutboxEvent]),
     ConfigModule,
     UsersModule,
+    ScheduleModule.forRoot(),
 
-    // JWT para access tokens (secret + expiresIn vienen del .env)
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -42,7 +44,6 @@ import { KafkaProducer } from './kafka.producer';
       },
     }),
 
-    // kafka client to emit events (USER_CREATED)
     ClientsModule.registerAsync([
       {
         name: 'AUTH_KAFKA_CLIENT',
@@ -66,12 +67,13 @@ import { KafkaProducer } from './kafka.producer';
     AuthApplication,
     AuthInfrastructure,
     {
-    provide: AuthRepository,
-    useExisting: AuthInfrastructure,
-  },
+      provide: AuthRepository,
+      useExisting: AuthInfrastructure,
+    },
     JwtStrategy,
     JwtAuthGuard,
-    KafkaProducer,
+    OutboxPublisher,
+    OutboxProcessor,
   ],
   exports: [
     AuthApplication,

@@ -25,4 +25,7 @@ export class WalletApplication {
     return this.repository.transfer(fromUserId, toUserId, amount, currency);
   }
 
+  async credit(userId: string, amount: number, currency: string, reason?: string) {
+    return this.repository.credit(userId, amount, currency, reason);
+  }
 }

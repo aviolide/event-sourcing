@@ -9,9 +9,9 @@ import { User } from '../../users/domain/user';
 import { AuthTokens, YupiJwtPayload } from '../domain/auth.types';
 import { RefreshToken } from '../infrastructure/entities/auth.entity';
 import { InvalidCredentialsException } from '../../../core/exceptions/auth.exception';
-import { KafkaProducer } from '../infrastructure/presentation/kafka.producer';
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from '../domain/repositories/auth.repository';
+import { OutboxPublisher, Topics } from '@yupi/messaging';
 
 @Injectable()
 export class AuthApplication {
@@ -23,7 +23,7 @@ export class AuthApplication {
     private readonly jwtService: JwtService,
     @Inject(AuthRepository)
     private readonly authRepo: AuthRepository,
-    private readonly kafkaProducer: KafkaProducer,
+    private readonly outboxPublisher: OutboxPublisher,
     private readonly configService: ConfigService,
   ) {
     this.accessTokenTtl = this.configService.get('JWT_EXPIRES_IN')!;
@@ -47,11 +47,18 @@ export class AuthApplication {
 
     const createdUser = saveResult.value;
 
-    await this.kafkaProducer.emitUserCreated({
-      id: createdUser.properties().id!,
-      phone,
-      email,
-      fullName
+    await this.outboxPublisher.save({
+      topic: Topics.EVT_USER_CREATED,
+      payload: {
+        id: createdUser.properties().id!,
+        phone,
+        email,
+        fullName,
+      },
+      aggregateId: createdUser.properties().id!,
+      aggregateType: 'User',
+      aggregateVersion: 1,
+      producer: 'auth-service',
     });
 
     const tokens = await this.generateTokens(createdUser);

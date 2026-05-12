@@ -1,8 +1,8 @@
 # Digital Wallet Platform
 
-### Secure Microservices Architecture with NestJS, GraphQL & Docker
+### Event-Sourced Microservices with Kafka Commands/Events, Saga Orchestration & Projection Reads
 
-A **production-grade digital wallet platform** built with **NestJS microservices**, **GraphQL Gateway**, **Kafka**, and **PostgreSQL**, following **Hexagonal Architecture**, **SOLID principles**, **Docker best practices**, and **OWASP Top 10 (2025)** security guidelines.
+A **production-grade digital wallet platform** built with **NestJS microservices**, **GraphQL Gateway**, **Kafka**, **PostgreSQL**, and **Event Sourcing**. Follows **Hexagonal Architecture**, **CQRS** (Command Query Responsibility Segregation), **Outbox Pattern**, **Saga Orchestration**, and **OWASP Top 10 (2025)** security guidelines.
 
 ---
 
@@ -12,61 +12,101 @@ A **production-grade digital wallet platform** built with **NestJS microservices
 Client (Web / Mobile)
         │
         ▼
-┌────────────────────────────┐
-│  00-gateway (GraphQL BFF)  │  :3000
-│  Apollo Server · JWT Guard │
-└────────────┬───────────────┘
-             │  HTTP
-   ┌─────────┼─────────┬──────────────┐
-   ▼         ▼         ▼              │
-┌──────┐ ┌──────┐ ┌─────────┐        │
-│01-auth│ │02-wal│ │03-pay   │        │
-│ :3010 │ │ :3020│ │  :3030  │        │
-└──┬───┘ └──┬───┘ └────┬────┘        │
-   │        │          │              │
-   └────────┴────┬─────┘              │
-                 ▼                    │
-          ┌────────────┐              │
-          │   Kafka    │              │
-          │ Event Bus  │              │
-          └─────┬──────┘              │
-                │                     │
-        ┌───────┴────────┐            │
-        ▼                ▼            │
-  ┌──────────┐     ┌────────┐         │
-  │04-logging│     │02-wal  │         │
-  │  :3040   │     │consumer│         │
-  └────┬─────┘     └────────┘         │
-       │                              │
-       └──────────────────────────────┘
-                 ▼
-       ┌──────────────────┐
-       │   PostgreSQL     │
-       │   (shared DB)    │
-       └──────────────────┘
+┌─────────────────────────────────────┐
+│  00-gateway (GraphQL BFF)           │  :3000
+│  Apollo Server · JWT Guard          │
+│  Command Publisher · Projection API │
+└────────────┬────────────────────────┘
+             │ Kafka Commands
+    ┌────────┴────────┬──────────────┐
+    ▼                 ▼              ▼
+┌─────────┐    ┌──────────┐    ┌─────────┐
+│05-saga  │    │01-auth   │    │03-pay   │
+│ :3050   │    │  :3010   │    │  :3030  │
+│Saga     │    │Identity  │    │Command  │
+│Orchestr.│    │Provider  │    │State    │
+└────┬────┘    └────┬─────┘    └────┬────┘
+     │              │               │
+     │ Kafka Events │ Kafka Events  │ Kafka Events
+     └──────────────┼───────────────┘
+                    ▼
+             ┌────────────┐
+             │   Kafka    │
+             │ Event Bus  │
+             └─────┬──────┘
+                   │
+     ┌─────────────┼──────────────┬──────────────┐
+     ▼             ▼              ▼              ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│02-wallet │ │04-logging│ │06-proj   │ │03-pay    │
+│  :3020   │ │  :3040   │ │  :3060   │ │consumer  │
+│Event     │ │Immutable │ │Read-Model│ │          │
+│Sourced   │ │Event Store│ │Projection│ │          │
+│Ledger    │ │+ Replay  │ │          │ │          │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘
+     │             │              │
+     └─────────────┴──────────────┘
+                   ▼
+        ┌──────────────────┐
+        │   PostgreSQL       │
+        │  (per-service DB)  │
+        └──────────────────┘
 ```
 
 ### Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| **00-gateway** | 3000 | GraphQL BFF — Apollo Server, JWT auth guards, rate limiting. Routes to downstream services via HTTP. |
-| **01-auth** | 3010 | Identity provider — user registration, login, JWT issuance (access + refresh tokens), password hashing (bcrypt). Emits `user.created` events. |
-| **02-wallet** | 3020 | Financial ledger — manages user wallets and balances. Consumes `user.created` to auto-create wallets. Handles transfers with pessimistic locking. |
-| **03-payments** | 3030 | Transaction processing — creates payments, triggers wallet transfers via Kafka. Consumes `wallet.transfer.processed` to update payment status. Supports refill operations. |
-| **04-logging** | 3040 | Append-only event store — consumes **all** Kafka events from every service and persists them to PostgreSQL. Exposes SSE stream + REST API. Includes a live dashboard frontend. |
+| Service | Port | Role | Description |
+|---------|------|------|-------------|
+| **00-gateway** | 3000 | **Command API + Projection Reader** | GraphQL BFF — Apollo Server, JWT guards, rate limiting. Publishes Kafka commands for mutations. Reads wallet/payment status from projections. |
+| **01-auth** | 3010 | **Identity Provider** | User registration, login, JWT issuance (access + refresh tokens), bcrypt hashing. Uses **Outbox Pattern** to emit `evt.user.created` after DB commit. |
+| **02-wallet** | 3020 | **Event-Sourced Ledger** | Immutable event-sourced wallet core. Stores `wallet_ledger_entries`, `wallet_snapshots`, and `wallet_balance_view`. Consumes commands, emits domain events. |
+| **03-payments** | 3030 | **Command State Service** | Payment state machine (PENDING → COMPLETED/FAILED). Publishes `cmd.wallet.transfer` instead of calling wallet HTTP. Listens to result events for status updates. |
+| **04-logging** | 3040 | **Immutable Event Store** | Append-only store for **all** Kafka events with full envelope metadata (correlationId, causationId, aggregateVersion, producer). Exposes replay and inspection REST APIs. |
+| **05-saga** | 3050 | **Saga Orchestrator** | Multi-step transfer saga coordinator. Consumes `cmd.payment.transfer.create`, publishes `cmd.wallet.transfer`, waits for `evt.wallet.debited`/`evt.payment.failed`, emits completion events. |
+| **06-projections** | 3060 | **Read-Side Projection** | Consumes all `evt.*` messages and builds query-optimized views: `wallet_balance_view`, `payment_status_view`. Gateway reads from here. |
+| **packages/messaging** | — | **Shared Messaging Library** | KafkaEnvelope, Topic registry, KafkaProducerService, OutboxPublisher, InboxGuard — used by all write-side services. |
 
-### Kafka Event Flow
+### Commands vs Events
 
 ```
-01-auth ──► user.created ──────────► 02-wallet (creates wallet)
-                                 └─► 04-logging (persists event)
+Commands (Intent)                          Events (Facts)
+─────────────────────────────────────────────────────────────────
+cmd.user.register         →              evt.user.created
+cmd.payment.transfer.create →            evt.payment.created
+cmd.wallet.transfer       →              evt.wallet.debited
+                                         evt.wallet.credited
+cmd.wallet.refill         →              evt.wallet.credited
+                                         evt.payment.completed
+                                         evt.payment.failed
+```
 
-03-payments ──► wallet.transfer.requested ──► 02-wallet (executes transfer)
-                                           └─► 04-logging (persists event)
+### Kafka Event Flow (New Architecture)
 
-02-wallet ──► wallet.transfer.processed ──► 03-payments (updates status)
-                                         └─► 04-logging (persists event)
+```
+01-auth ──► [Outbox] ──► evt.user.created ──► 02-wallet (creates wallet)
+                                          ├─► 04-logging (persists full envelope)
+                                          ├─► 06-projections (builds read-model)
+
+00-gateway ──► cmd.payment.transfer.create ──► 05-saga (starts saga)
+                                                      │
+                                                      ▼
+                                              cmd.wallet.transfer ──► 02-wallet (executes)
+                                              │                        │
+                                              │                        ▼
+                                              │              evt.wallet.debited ──► 05-saga (completes)
+                                              │              evt.wallet.credited    │
+                                              │                                   ▼
+                                              │                         evt.payment.completed ──► 03-payments (status)
+                                              │                                                  ├─► 04-logging
+                                              │                                                  └─► 06-projections
+                                              │
+                                              └──► evt.payment.failed (on error)
+                                                   └─► 03-payments / 04-logging / 06-projections
+
+00-gateway ──► cmd.wallet.refill ──► 02-wallet (credits)
+                                          │
+                                          ▼
+                                evt.wallet.credited ──► 04-logging / 06-projections
 ```
 
 ---
@@ -77,18 +117,21 @@ Client (Web / Mobile)
 |-----------|---------|
 | **NestJS** | Microservices framework with dependency injection |
 | **GraphQL (Apollo)** | Gateway BFF layer — unified API for clients |
-| **Kafka (KRaft)** | Event-driven async communication between services |
-| **PostgreSQL 15** | Relational database with TypeORM |
+| **Kafka (KRaft)** | Command/event bus for async service communication |
+| **PostgreSQL 15** | Relational database with TypeORM (per-service) |
+| **Event Sourcing** | Immutable ledger entries + snapshots for wallet |
+| **CQRS** | Separate command (write) and projection (read) models |
+| **Saga Pattern** | Multi-step transaction orchestration with compensation |
+| **Outbox Pattern** | Transactional safety: DB commit → Kafka publish |
 | **Docker** | Multi-stage builds, non-root containers |
 | **Zod** | Runtime environment variable validation |
 | **class-validator** | DTO validation with decorators |
 | **neverthrow** | Functional error handling (`Result<T, E>` pattern) |
-| **Pact** | Consumer-driven contract testing |
 | **Jest** | Unit, integration, e2e, chaos, and performance tests |
 
 ---
 
-## Hexagonal Architecture
+## Hexagonal Architecture + Event Sourcing
 
 Each microservice follows **Hexagonal Architecture** (Ports & Adapters):
 
@@ -104,11 +147,15 @@ src/
     └── [feature]/
         ├── domain/                # Core business logic (framework-free)
         │   ├── repositories/      # Port interfaces (abstractions)
-        │   └── [feature].ts       # Domain entity
+        │   ├── events/            # Domain events (WalletCreated, FundsDebited...)
+        │   └── [feature].ts       # Domain entity / aggregate
         ├── application/           # Use-case orchestration
         │   └── [feature].application.ts
         └── infrastructure/        # Adapters (DB, Kafka, HTTP)
             ├── entities/          # TypeORM entities
+            │   ├── [feature].entity.ts
+            │   ├── [feature]-ledger.entity.ts
+            │   └── [feature]-snapshot.entity.ts
             ├── [feature].infrastructure.ts  # Repository impl
             └── presentation/      # Controllers, DTOs, modules
                 ├── dtos/
@@ -117,33 +164,72 @@ src/
                 └── [feature].module.ts
 ```
 
+### Event Sourcing in Wallet Service
+
+```
+┌─────────────────────────────────────────┐
+│           Command Handler               │
+│  (cmd.wallet.transfer / refill)        │
+└─────────────────┬───────────────────────┘
+                  │ validate command
+                  ▼
+┌─────────────────────────────────────────┐
+│      Append Ledger Events               │
+│  wallet_ledger_entries:                │
+│  - WalletCreated                        │
+│  - FundsCredited                        │
+│  - FundsDebited                         │
+└─────────────────┬───────────────────────┘
+                  │ every 100 events
+                  ▼
+┌─────────────────────────────────────────┐
+│          Snapshot Aggregate               │
+│  wallet_snapshots (balance + version)  │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│      Update Projection View               │
+│  wallet_balance_view (fast reads)      │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│         Publish Result Event              │
+│  evt.wallet.debited / credited         │
+└─────────────────────────────────────────┘
+```
+
 **Key principles:**
 - **Dependency Inversion** — domain defines interfaces, infrastructure implements them
 - **Pure Domain** — domain entities have zero framework dependencies
-- **Loose Coupling** — services communicate via Kafka events, not direct calls
+- **Event Sourcing** — ledger is source of truth; balance is derived
+- **CQRS** — writes go to ledger, reads come from projection views
+- **Outbox Pattern** — DB commit and Kafka publish are atomic (via outbox table)
+- **Inbox Deduplication** — processed message IDs tracked to prevent replays
 - **Functional Errors** — `neverthrow` Result types instead of thrown exceptions
 
 ---
 
 ## GraphQL API (Gateway)
 
-The gateway exposes the following operations:
+### Mutations (Async — Return ACCEPTED)
 
-### Mutations
+| Operation | Auth | Description | Response |
+|-----------|------|-------------|----------|
+| `register(input)` | No | Register a new user, returns access + refresh tokens | `LoginResponse` |
+| `login(input)` | No | Authenticate, returns access + refresh tokens | `LoginResponse` |
+| `refresh(input)` | No | Refresh an expired access token | `RefreshResponse` |
+| `transfer(input)` | JWT | Create a payment transfer between users | `{ requestId, status: "ACCEPTED" }` |
+| `refillWallet(input)` | JWT | Add funds to the authenticated user's wallet | `{ requestId, status: "ACCEPTED" }` |
 
-| Operation | Auth | Description |
-|-----------|------|-------------|
-| `register(input)` | No | Register a new user, returns access + refresh tokens |
-| `login(input)` | No | Authenticate, returns access + refresh tokens |
-| `refresh(input)` | No | Refresh an expired access token |
-| `transfer(input)` | JWT | Create a payment transfer between users |
-| `refillWallet(input)` | JWT | Add funds to the authenticated user's wallet |
+> **Note:** Transfer and refill are now **asynchronous**. The gateway publishes a Kafka command and returns a `requestId`. Poll the projection query or subscribe to events for status updates.
 
-### Queries
+### Queries (Read from Projections)
 
-| Operation | Auth | Description |
-|-----------|------|-------------|
-| `wallet(userId)` | JWT | Get wallet balance for a user |
+| Operation | Auth | Description | Source |
+|-----------|------|-------------|--------|
+| `wallet(userId)` | JWT | Get wallet balance for a user | `06-projections` (wallet_balance_view) |
 
 ---
 
@@ -160,6 +246,7 @@ The gateway exposes the following operations:
 | CSRF | Apollo CSRF protection |
 | Information Disclosure | `formatError` hides stack traces in production |
 | Dependency Risks | Minimal Alpine Docker images; non-root containers |
+| Idempotency | InboxGuard deduplication prevents double-processing |
 
 ---
 
@@ -185,7 +272,9 @@ pnpm start:services
 #   Auth:               http://localhost:3010
 #   Wallet:             http://localhost:3020
 #   Payments:           http://localhost:3030
-#   Logging Dashboard:  http://localhost:3040
+#   Logging API:        http://localhost:3040/events
+#   Saga:               http://localhost:3050
+#   Projections:        http://localhost:3060
 #   Kafka:              localhost:9092
 #   PostgreSQL:         localhost:5432
 
@@ -203,32 +292,110 @@ pnpm install
 pnpm compose:stage:infra
 
 # Start individual services (each needs its own .env)
-pnpm start:auth
-pnpm start:wallet
-pnpm start:payments
-pnpm start:logging
-pnpm start:gateway
+pnpm start:auth        # 01-auth
+pnpm start:wallet      # 02-wallet
+pnpm start:payments    # 03-payments
+pnpm start:logging     # 04-logging
+pnpm start:saga        # 05-saga
+pnpm start:projections # 06-projections
+pnpm start:gateway     # 00-gateway
 ```
 
 ---
 
-## Event Logging & Live Dashboard (04-logging)
+## Event Store & Replay (04-logging)
 
-The logging microservice acts as an **append-only event store** — it subscribes to all Kafka topics and persists every event to a `event_logs` PostgreSQL table.
+The logging microservice is now a **true immutable event store** — it subscribes to all Kafka topics and persists every event with full envelope metadata.
 
-- **SSE stream**: `GET http://localhost:3040/events/stream` — real-time event feed via Server-Sent Events
-- **REST API**: `GET http://localhost:3040/events?limit=50` — query recent events
-- **Dashboard**: `http://localhost:3040` — live web UI with color-coded events, auto-reconnect
+### Replay Endpoints
 
-The `event_logs` table is append-only (no updates or deletes):
+| Endpoint | Description |
+|----------|-------------|
+| `GET /events/replay?topic=evt.wallet.debited&limit=100` | Replay events by topic |
+| `GET /events/correlation/:correlationId` | Trace all events in a saga/correlation |
+| `GET /events/aggregate/:aggregateId` | Replay all events for an aggregate |
+
+### Event Log Schema
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | UUID | Auto-generated primary key |
-| `topic` | varchar | Kafka topic name |
-| `key` | varchar | Kafka message key (nullable) |
+| `topic` | varchar | Kafka topic name (cmd.* or evt.*) |
+| `messageId` | varchar | Unique message identifier (dedup key) |
+| `correlationId` | varchar | Saga/correlation trace ID |
+| `causationId` | varchar | Causation chain ID |
+| `aggregateId` | varchar | Aggregate root identifier |
+| `aggregateType` | varchar | Aggregate type (Wallet, PaymentTransfer...) |
+| `aggregateVersion` | integer | Optimistic concurrency version |
+| `producer` | varchar | Service that emitted the event |
 | `payload` | jsonb | Full event payload |
 | `receivedAt` | timestamp | When the event was persisted |
+
+---
+
+## Saga Orchestration (05-saga)
+
+The saga orchestrator manages multi-step transfer workflows:
+
+```
+┌─────────────┐     cmd.payment.transfer.create      ┌─────────────┐
+│  00-gateway  │ ───────────────────────────────────► │  05-saga     │
+└─────────────┘                                      └──────┬──────┘
+                                                            │
+                                                            ▼
+                                                     ┌─────────────┐
+                                                     │   PENDING    │
+                                                     │  Saga State  │
+                                                     └──────┬──────┘
+                                                            │
+                                                            ▼
+                                                     cmd.wallet.transfer
+                                                            │
+                                                            ▼
+                              ┌─────────────────────────────────────────┐
+                              │           02-wallet executes              │
+                              └─────────────────┬───────────────────────┘
+                                                │
+                              ┌─────────────────┴───────────────────────┐
+                              ▼                                         ▼
+                    ┌───────────────┐                        ┌───────────────┐
+                    │evt.wallet.   │                        │evt.payment.   │
+                    │   debited    │                        │   failed      │
+                    └───────┬──────┘                        └───────┬──────┘
+                            │                                     │
+                            ▼                                     ▼
+                    ┌───────────────┐                    ┌───────────────┐
+                    │evt.payment.   │                    │   FAILED     │
+                    │  completed     │                    │  Saga State  │
+                    └───────────────┘                    └───────────────┘
+```
+
+**Saga State Table (`saga_instances`):**
+
+| Field | Description |
+|-------|-------------|
+| `sagaId` | Unique saga identifier (same as requestId) |
+| `type` | Saga type (e.g., `Transfer`) |
+| `status` | `PENDING`, `COMPLETED`, `FAILED`, `COMPENSATING` |
+| `step` | Current step in the workflow |
+| `payload` | Original command payload (jsonb) |
+| `lastError` | Error message if failed |
+
+---
+
+## Projections (06-projections)
+
+The projection service is the **read side** of CQRS. It consumes all `evt.*` messages and maintains query-optimized views:
+
+| View | Events Consumed | Purpose |
+|------|----------------|---------|
+| `wallet_balance_view` | `evt.wallet.created`, `evt.wallet.credited`, `evt.wallet.debited` | Fast wallet balance lookups |
+| `payment_status_view` | `evt.payment.created`, `evt.payment.completed`, `evt.payment.failed` | Payment status tracking |
+
+**Key features:**
+- Views can be **wiped and rebuilt** from Kafka or the event store
+- Gateway's `wallet(userId)` query reads from `wallet_balance_view`
+- Idempotent consumption via `InboxGuard`
 
 ---
 
@@ -249,10 +416,22 @@ pnpm test:e2e:wallet      # Wallet transfers, concurrency, Kafka
 pnpm test:e2e:payments    # Payment processing
 pnpm test:e2e:gateway     # Gateway auth guard
 pnpm test:e2e:platform    # Full platform flow
-pnpm test:contracts       # Pact consumer-driven contracts
+
+# Event sourcing specific tests
+pnpm test:aggregate       # Aggregate replay tests
+pnpm test:idempotency     # Duplicate event handling
 pnpm test:chaos           # Chaos / resilience tests
 pnpm test:performance     # Performance tests
 ```
+
+### New Test Types
+
+| Test | Description |
+|------|-------------|
+| **Aggregate Replay** | Load events → rebuild wallet → assert balance |
+| **Idempotency** | Replay same event 3 times → state must remain identical |
+| **Chaos Kafka** | Kill wallet container mid-transfer → restart → replay → consistent |
+| **Saga Recovery** | Restart saga service mid-flight → flow must resume |
 
 > **Note:** E2e tests require running infrastructure (Postgres + Kafka). Start with `pnpm compose:stage:infra` first.
 
@@ -278,39 +457,123 @@ docker compose -f docker-compose.stage.yaml --profile services up -d --build
 
 ```
 .
-├── 00-gateway/          # GraphQL BFF gateway
-├── 01-auth/             # Authentication service
-├── 02-wallet/           # Wallet / ledger service
-├── 03-payments/         # Payment processing service
-├── 04-logging/          # Append-only event store + SSE dashboard
-├── test/                # Monorepo test suite
-│   ├── e2e/             # End-to-end test flows
-│   ├── integration/     # Database integration tests
-│   ├── shared/          # Test helpers, builders, mocks
-│   └── unit/            # Unit tests
-├── docker-compose.yaml          # Dev infra (Postgres + Kafka)
-├── docker-compose.stage.yaml    # Full stack (infra + services)
-├── jest.config.js               # Monorepo Jest configuration
-├── pnpm-workspace.yaml          # pnpm workspace packages
-└── package.json                 # Root scripts and shared deps
+├── packages/
+│   └── messaging/           # Shared Kafka library (envelope, topics, producer, outbox, inbox)
+├── 00-gateway/             # GraphQL BFF gateway — commands + projection reads
+├── 01-auth/                # Authentication service — outbox pattern for user events
+├── 02-wallet/              # Event-sourced wallet ledger — ledger + snapshots + projections
+├── 03-payments/            # Payment command state — saga participant
+├── 04-logging/             # Immutable event store + replay API
+├── 05-saga/                # Saga orchestrator for multi-step transfers
+├── 06-projections/         # Read-side projection service (CQRS)
+├── test/                   # Monorepo test suite
+│   ├── e2e/               # End-to-end test flows
+│   ├── integration/         # Database integration tests
+│   ├── shared/              # Test helpers, builders, mocks
+│   └── unit/                # Unit tests
+├── docker-compose.yaml             # Dev infra (Postgres + Kafka)
+├── docker-compose.stage.yaml       # Full stack (infra + services)
+├── jest.config.js                  # Monorepo Jest configuration
+├── pnpm-workspace.yaml             # pnpm workspace packages
+└── package.json                    # Root scripts and shared deps
 ```
 
 ---
 
 ## Environment Variables
 
-Each service validates its environment with Zod at startup. See `src/config/env.validation.ts` in each service for the full schema. Common variables:
+Each service validates its environment with Zod at startup. See `src/config/env.validation.ts` in each service for the full schema.
+
+### Common Variables
 
 | Variable | Services | Description |
 |----------|----------|-------------|
 | `PORT` | All | HTTP port |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | auth, wallet, payments, logging | PostgreSQL connection |
-| `KAFKA_BROKER` | wallet, payments, logging | Kafka broker address |
-| `KAFKA_GROUP_ID` | wallet, payments, logging | Kafka consumer group |
-| `KAFKA_CLIENT_ID` | payments, logging | Kafka client identifier |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | auth, wallet, payments, logging, saga, projections | PostgreSQL connection |
+| `KAFKA_BROKER` | All | Kafka broker address |
+| `KAFKA_GROUP_ID` | wallet, payments, logging, saga, projections | Kafka consumer group |
+| `KAFKA_CLIENT_ID` | All | Kafka client identifier (producer) |
 | `JWT_SECRET` | gateway, auth, payments | JWT signing secret (min 32 chars) |
 | `JWT_EXPIRES_IN` | auth | Access token TTL (default: 15m) |
 | `JWT_REFRESH_SECRET` | auth | Refresh token signing secret |
-| `WALLET_SERVICE_URL` | payments | Wallet service base URL |
-| `AUTH_SERVICE_URL` | gateway | Auth service base URL |
-| `PAYMENTS_SERVICE_URL` | gateway | Payments service base URL |
+| `AUTH_SERVICE_URL` | gateway | Auth service base URL (synchronous calls only) |
+
+### Removed Variables
+
+| Variable | Reason |
+|----------|--------|
+| `WALLET_SERVICE_URL` | Wallet no longer accepts HTTP calls — commands via Kafka |
+| `PAYMENTS_SERVICE_URL` | Payments no longer called via HTTP — commands via Kafka |
+
+---
+
+## Shared Messaging Library (`packages/messaging`)
+
+All write-side services use the shared `@yupi/messaging` package:
+
+### KafkaEnvelope
+
+Every Kafka message carries metadata:
+
+```typescript
+interface KafkaEnvelope<T> {
+  eventId: string;           // Unique event identifier
+  messageId: string;         // Deduplication key
+  correlationId: string;     // Saga trace ID
+  causationId?: string;       // Previous event ID (causation chain)
+  aggregateId: string;        // Entity ID (walletId, paymentId...)
+  aggregateType: string;      // Entity type (Wallet, PaymentTransfer...)
+  aggregateVersion: number;  // Optimistic concurrency version
+  topicVersion: number;      // Schema version (default: 1)
+  occurredAt: string;        // ISO timestamp
+  producer: string;           // Service name (e.g., "wallet-service")
+  payload: T;                // Domain event payload
+}
+```
+
+### Outbox Pattern
+
+```typescript
+// In application layer — save to outbox within DB transaction
+await outboxPublisher.save({
+  topic: Topics.EVT_USER_CREATED,
+  payload: { id, email, fullName },
+  aggregateId: id,
+  aggregateType: 'User',
+  aggregateVersion: 1,
+  producer: 'auth-service',
+});
+
+// OutboxProcessor flushes every 10 seconds
+// DB commit → outbox saved → Kafka published → marked sent
+```
+
+### Inbox Deduplication
+
+```typescript
+// In Kafka consumer — idempotent consumption
+await inboxGuard.process(messageId, topic, async () => {
+  // handler logic — only runs if messageId not seen
+});
+```
+
+---
+
+## Migration from Previous Architecture
+
+| Before (HTTP + Shared DB) | After (Commands/Events + Event Sourcing) |
+|----------------------------|------------------------------------------|
+| Gateway calls services via HTTP | Gateway publishes Kafka commands |
+| Wallet balance mutated directly | Wallet appends immutable ledger events |
+| Payments calls wallet HTTP | Payments publishes `cmd.wallet.transfer` |
+| Logging stores just payload | Logging stores full envelope with metadata |
+| No saga orchestration | Dedicated saga service manages transfer flow |
+| Gateway reads wallet DB directly | Gateway reads from projection service |
+| No deduplication | InboxGuard prevents duplicate processing |
+| No outbox | OutboxPublisher ensures DB+Kafka atomicity |
+
+---
+
+## License
+
+UNLICENSED

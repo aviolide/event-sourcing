@@ -18,18 +18,28 @@ export class EventLogApplication {
 
   async append(
     topic: string,
-    key: string | null,
-    payload: Record<string, unknown>,
+    envelope: Record<string, unknown>,
   ): Promise<EventLog> {
-    const entity = this.repo.create({ topic, key, payload });
+    const entity = this.repo.create({
+      topic,
+      messageId: (envelope.messageId as string) || null,
+      correlationId: (envelope.correlationId as string) || null,
+      causationId: (envelope.causationId as string) || null,
+      aggregateId: (envelope.aggregateId as string) || null,
+      aggregateType: (envelope.aggregateType as string) || null,
+      aggregateVersion: (envelope.aggregateVersion as number) || null,
+      producer: (envelope.producer as string) || null,
+      payload: (envelope.payload as Record<string, unknown>) || envelope,
+    });
+
     const saved = await this.repo.save(entity);
 
-    this.logger.log(`Event persisted: topic=${topic} id=${saved.id}`);
+    this.logger.log(`Event persisted: topic=${topic} id=${saved.id} correlationId=${saved.correlationId}`);
 
     const event: EventLog = {
       id: saved.id,
       topic: saved.topic,
-      key: saved.key,
+      key: saved.aggregateId,
       payload: saved.payload,
       receivedAt: saved.receivedAt,
     };
@@ -42,6 +52,20 @@ export class EventLogApplication {
     return this.repo.find({
       order: { receivedAt: 'DESC' },
       take: limit,
+    });
+  }
+
+  async findByCorrelationId(correlationId: string): Promise<EventLog[]> {
+    return this.repo.find({
+      where: { correlationId },
+      order: { receivedAt: 'ASC' },
+    });
+  }
+
+  async findByAggregateId(aggregateId: string): Promise<EventLog[]> {
+    return this.repo.find({
+      where: { aggregateId },
+      order: { receivedAt: 'ASC' },
     });
   }
 
