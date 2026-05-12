@@ -31,6 +31,7 @@ export class ProjectionsService {
         userId: payload.userId,
         currency: payload.currency,
         balance: String(payload.initialBalance),
+        reserved: '0',
         version: 1,
       });
       this.logger.log(`Wallet projection created: userId=${payload.userId}`);
@@ -69,10 +70,32 @@ export class ProjectionsService {
 
     if (existing) {
       const newBalance = Number(existing.balance) - payload.amount;
+      const newReserved = Math.max(0, Number(existing.reserved) - payload.amount);
       existing.balance = String(newBalance);
+      existing.reserved = String(newReserved);
       await this.walletBalanceRepo.save(existing);
       this.logger.log(
-        `Wallet committed projection: userId=${payload.userId} balance=${newBalance}`,
+        `Wallet committed projection: userId=${payload.userId} balance=${newBalance} reserved=${newReserved}`,
+      );
+    }
+  }
+
+  async onWalletReleased(payload: {
+    walletId: string;
+    userId: string;
+    amount: number;
+    currency: string;
+  }) {
+    const existing = await this.walletBalanceRepo.findOne({
+      where: { userId: payload.userId },
+    });
+
+    if (existing) {
+      const newReserved = Math.max(0, Number(existing.reserved) - payload.amount);
+      existing.reserved = String(newReserved);
+      await this.walletBalanceRepo.save(existing);
+      this.logger.log(
+        `Wallet released projection: userId=${payload.userId} reserved=${newReserved}`,
       );
     }
   }
