@@ -122,6 +122,30 @@ services:
       wallet:
         condition: service_started
 
+  logging:
+    build:
+      context: ./04-logging
+      dockerfile: Dockerfile
+    restart: always
+    profiles: ["services"]
+    environment:
+      PORT: 3040
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-wallet_test}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CLIENT_ID: logging-stage-client
+      KAFKA_GROUP_ID: logging-stage-group
+    ports:
+      - "${LOGGING_PORT:-3040}:3040"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
   gateway:
     build:
       context: ./00-gateway
