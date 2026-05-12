@@ -5,8 +5,9 @@ export const envSchema = z.object({
   PORT: z.string().transform(Number).pipe(z.number().int().positive()),
 
   AUTH_SERVICE_URL: z.string(),
-  WALLET_SERVICE_URL: z.string(),
-  PAYMENTS_SERVICE_URL: z.string(),
+
+  KAFKA_BROKER: z.string(),
+  KAFKA_CLIENT_ID: z.string().default('gateway-client'),
 
   JWT_SECRET: z.string().min(32),
 
