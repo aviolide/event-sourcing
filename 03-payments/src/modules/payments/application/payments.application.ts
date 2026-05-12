@@ -3,7 +3,6 @@ import { err, ok, Result } from 'neverthrow';
 
 import { PaymentRepository, RefillResult } from '../domain/repositories/payment.repository';
 import { Payment } from '../domain/payment';
-import { PaymentsKafkaProducer } from '../infrastructure/presentation/kafka.producer';
 import { BaseException } from '../../../core/exceptions/base.exception';
 
 export type CreatePaymentResult = Promise<
@@ -32,20 +31,11 @@ export class PaymentsApplication {
       currency: input.currency,
       description: input.description,
     });
-    console.log('payments', payment)
 
-    const result = await this.repository.createAndProcess(payment);
-
-    if (result.isErr()) {
-      return err(result.error);
-    }
-
-    const created = result.value;
-
-    return ok(created);
+    return this.repository.createPayment(payment);
   }
 
-  async refill(
+  async createRefill(
     input: {
       userId: string,
       amount: number,
@@ -53,16 +43,7 @@ export class PaymentsApplication {
       description?: string,
     }
   ): Promise<RefillResult> {
-    console.log('application refill start')
-    const result = await this.repository.refill(input.userId, input.amount, input.currency);
-    
-    if (result.isErr()) {
-      return err(result.error);
-    }
-
-    const created = result.value;
-
-    return ok(created);
+    return this.repository.createRefill(input.userId, input.amount, input.currency, input.description);
   }
 
   async updatePaymentStatus(

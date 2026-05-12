@@ -13,7 +13,7 @@ import { PaymentsController } from './payment.controller';
 import { PaymentsKafkaConsumer } from './kafka.consumer';
 import { JwtStrategy } from 'src/core/guards/jwt.strategy';
 import { JwtAuthGuard } from 'src/core/guards/jwt-auth.guard';
-import { KafkaProducerService, InboxGuard } from '@yupi/messaging';
+import { InboxGuard } from '@yupi/messaging';
 
 @Module({
   imports: [
@@ -49,7 +49,6 @@ import { KafkaProducerService, InboxGuard } from '@yupi/messaging';
   providers: [
     PaymentInfrastructure,
     PaymentsApplication,
-    KafkaProducerService,
     InboxGuard,
     {
       provide: PaymentRepository,
