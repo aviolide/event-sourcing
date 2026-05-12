@@ -35,6 +35,10 @@ export class TransferInput {
 export class TransferResponse {
   @Field()
   @IsString()
+  requestId: string;
+
+  @Field()
+  @IsString()
   status: string;
 
   @Field()
@@ -43,5 +47,5 @@ export class TransferResponse {
 
   @Field()
   @IsString()
-  description: string
+  description: string;
 }
