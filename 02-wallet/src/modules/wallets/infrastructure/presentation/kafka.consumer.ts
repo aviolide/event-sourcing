@@ -235,6 +235,70 @@ export class WalletCommandConsumer {
     });
   }
 
+  @EventPattern(Topics.CMD_WALLET_COMMIT)
+  async handleWalletCommit(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.CMD_WALLET_COMMIT, async () => {
+      this.logger.log(
+        `Received cmd.wallet.commit userId=${payload.userId} amount=${payload.amount} transferId=${payload.transferId}`,
+      );
+
+      const result = await this.application.commit(
+        payload.userId,
+        payload.amount,
+        payload.currency,
+        payload.transferId,
+      );
+
+      if (result.isErr()) {
+        this.logger.error(
+          `Commit failed: ${result.error.message}`,
+          result.error.stack,
+        );
+
+        await this.kafkaProducer.publish({
+          topic: Topics.EVT_WALLET_COMMIT_FAILED,
+          payload: {
+            transferId: payload.transferId,
+            userId: payload.userId,
+            amount: payload.amount,
+            currency: payload.currency,
+            reason: result.error.message,
+          },
+          aggregateId: payload.transferId,
+          aggregateType: 'Wallet',
+          aggregateVersion: 1,
+          correlationId: envelope.correlationId,
+          producer: 'wallet-service',
+        });
+        return;
+      }
+
+      await this.kafkaProducer.publish({
+        topic: Topics.EVT_WALLET_COMMITTED,
+        payload: {
+          transferId: payload.transferId,
+          userId: payload.userId,
+          amount: payload.amount,
+          currency: payload.currency,
+        },
+        aggregateId: payload.transferId,
+        aggregateType: 'Wallet',
+        aggregateVersion: 1,
+        correlationId: envelope.correlationId,
+        producer: 'wallet-service',
+      });
+
+      this.logger.log(`Commit succeeded: transferId=${payload.transferId}`);
+    });
+  }
+
   @EventPattern(Topics.CMD_WALLET_REFILL)
   async handleWalletRefill(
     @Payload() message: any,
