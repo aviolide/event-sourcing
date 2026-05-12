@@ -9,15 +9,27 @@ import {
 
 export type SagaStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'COMPENSATING';
 export type SagaType = 'Transfer';
+export type SagaStep =
+  | 'INITIATED'
+  | 'RESERVING'
+  | 'RESERVED'
+  | 'RESERVE_FAILED'
+  | 'CREDITING'
+  | 'CREDITED'
+  | 'CREDIT_FAILED'
+  | 'COMMITTING'
+  | 'RELEASING'
+  | 'COMPLETED'
+  | 'FAILED';
 
 @Entity({ name: 'saga_instances' })
-@Index(['correlationId'], { unique: true })
+@Index(['requestId'], { unique: true })
 export class SagaInstance {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  sagaId: string;
+  @Column({ type: 'varchar', length: 255 })
+  requestId: string;
 
   @Column({ type: 'varchar', length: 50 })
   type: SagaType;
@@ -26,7 +38,7 @@ export class SagaInstance {
   status: SagaStatus;
 
   @Column({ type: 'varchar', length: 50 })
-  step: string;
+  step: SagaStep;
 
   @Column({ type: 'jsonb' })
   payload: Record<string, unknown>;

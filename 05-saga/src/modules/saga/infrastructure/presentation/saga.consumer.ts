@@ -39,8 +39,8 @@ export class SagaConsumer {
     });
   }
 
-  @EventPattern(Topics.EVT_WALLET_DEBITED)
-  async handleWalletDebited(
+  @EventPattern(Topics.EVT_WALLET_RESERVED)
+  async handleWalletReserved(
     @Payload() message: any,
     @Ctx() context: KafkaContext,
   ) {
@@ -48,23 +48,16 @@ export class SagaConsumer {
     const payload = envelope.payload;
     const messageId = envelope.messageId || context.getMessage().offset;
 
-    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_DEBITED, async () => {
-      const sagaId = payload.transferId || payload.requestId;
-      if (!sagaId) {
-        this.logger.warn('Missing sagaId in wallet.debited event');
-        return;
-      }
-
-      await this.sagaService.onWalletDebited(
-        sagaId,
-        payload,
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_RESERVED, async () => {
+      await this.sagaService.onWalletReserved(
+        payload.requestId || payload.transferId,
         envelope.correlationId,
       );
     });
   }
 
-  @EventPattern(Topics.EVT_PAYMENT_FAILED)
-  async handlePaymentFailed(
+  @EventPattern(Topics.EVT_WALLET_RESERVE_FAILED)
+  async handleWalletReserveFailed(
     @Payload() message: any,
     @Ctx() context: KafkaContext,
   ) {
@@ -72,16 +65,79 @@ export class SagaConsumer {
     const payload = envelope.payload;
     const messageId = envelope.messageId || context.getMessage().offset;
 
-    await this.inboxGuard.process(messageId, Topics.EVT_PAYMENT_FAILED, async () => {
-      const sagaId = payload.requestId;
-      if (!sagaId) {
-        this.logger.warn('Missing sagaId in payment.failed event');
-        return;
-      }
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_RESERVE_FAILED, async () => {
+      await this.sagaService.onWalletReserveFailed(
+        payload.requestId || payload.transferId,
+        payload.reason || 'Reserve failed',
+        envelope.correlationId,
+      );
+    });
+  }
 
-      await this.sagaService.onWalletDebitFailed(
-        sagaId,
-        payload.reason || 'Unknown error',
+  @EventPattern(Topics.EVT_WALLET_CREDITED)
+  async handleWalletCredited(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_CREDITED, async () => {
+      await this.sagaService.onWalletCredited(
+        payload.requestId || payload.transferId,
+        envelope.correlationId,
+      );
+    });
+  }
+
+  @EventPattern(Topics.EVT_WALLET_CREDIT_FAILED)
+  async handleWalletCreditFailed(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_CREDIT_FAILED, async () => {
+      await this.sagaService.onWalletCreditFailed(
+        payload.requestId || payload.transferId,
+        payload.reason || 'Credit failed',
+        envelope.correlationId,
+      );
+    });
+  }
+
+  @EventPattern(Topics.EVT_WALLET_COMMITTED)
+  async handleWalletCommitted(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_COMMITTED, async () => {
+      await this.sagaService.onWalletCommitted(
+        payload.requestId || payload.transferId,
+        envelope.correlationId,
+      );
+    });
+  }
+
+  @EventPattern(Topics.EVT_WALLET_RELEASED)
+  async handleWalletReleased(
+    @Payload() message: any,
+    @Ctx() context: KafkaContext,
+  ) {
+    const envelope = message.payload ? message : { payload: message };
+    const payload = envelope.payload;
+    const messageId = envelope.messageId || context.getMessage().offset;
+
+    await this.inboxGuard.process(messageId, Topics.EVT_WALLET_RELEASED, async () => {
+      await this.sagaService.onWalletReleased(
+        payload.requestId || payload.transferId,
         envelope.correlationId,
       );
     });
