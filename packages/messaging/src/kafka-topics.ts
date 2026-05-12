@@ -4,6 +4,7 @@ export const Topics = {
   CMD_PAYMENT_TRANSFER_CREATE: 'cmd.payment.transfer.create',
   CMD_WALLET_RESERVE: 'cmd.wallet.reserve',
   CMD_WALLET_CREDIT: 'cmd.wallet.credit',
+  CMD_WALLET_COMMIT: 'cmd.wallet.commit',
   CMD_WALLET_RELEASE: 'cmd.wallet.release',
   CMD_WALLET_REFILL: 'cmd.wallet.refill',
 
@@ -14,6 +15,8 @@ export const Topics = {
   EVT_WALLET_RESERVE_FAILED: 'evt.wallet.reserve.failed',
   EVT_WALLET_CREDITED: 'evt.wallet.credited',
   EVT_WALLET_CREDIT_FAILED: 'evt.wallet.credit.failed',
+  EVT_WALLET_COMMITTED: 'evt.wallet.committed',
+  EVT_WALLET_COMMIT_FAILED: 'evt.wallet.commit.failed',
   EVT_WALLET_RELEASED: 'evt.wallet.released',
   EVT_PAYMENT_COMPLETED: 'evt.payment.completed',
   EVT_PAYMENT_FAILED: 'evt.payment.failed',
